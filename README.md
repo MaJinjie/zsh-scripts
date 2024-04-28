@@ -7,17 +7,20 @@
 2. search-string.zsh 能够根据匹配的条目数动态地调整fzf预览窗口的大小, 意味着你不需要关心何时打开预览窗口。（暂时没有添加切换键，因为这效果很好）
 3. search-string.zsh 支持fzf和rg两种模式的切换，并且可以在fzf搜索过程中动态地修改`max-depth hidden no-ignore iglob type type-not`等所有可以影响到匹配文件的参数，非常便捷。
 4. search-string.zsh 自主选择是否在开始时启用搜索，只有在传入正则匹配时才会启用初始查找。
-5. find-files.zsh search-string.zsh 支持大多数常用的参数。
-6. find-files.zsh search-string.zsh 定义了一种规则来替代命令行中选项参数的传入，这使得它使用起来更加方便。
+5. find-files.zsh search-string.zsh 支持大多数常用的选项参数。
+6. find-files.zsh search-string.zsh 定义了一种规则来替代命令行中常用选项参数的传入，这使得它使用起来更加方便。
 7. find-files.zsh search-string.zsh 都能够正确解析带有特殊字符的文件。
 
 # install
 
-`git clone https://github.com/MaJinjie/fzf-fd-rg.git`
+1. `git clone https://github.com/MaJinjie/fzf-fd-rg.git`
+2. 把`fzf-fd fzf-rg tools-report` 加入到环境变量中
 
 # usage
 
 ## 1 aliases
+
+> 我的别名
 
 ```bash
 ff "fzf-fd -H -d6 --split"
@@ -232,7 +235,7 @@ print -r \\\"reload($cmd \${(u)dynamic} \${(u)types} \${(u)globs} -- '\${\${FZF_
 **通过修改`b[1-3] per[1-3]`,可以重新调整比例。**
 
 ```bash
-# 由于在我的系统中，FZF_PREVIEW_LINES始终为空，所有我使用文件代替
+# 如果更改了fzf布局，需要改变line中的数字3
 change_preview="
 typeset lines=\$((FZF_LINES - 3))  match_count=\$FZF_MATCH_COUNT preview_lines=\${FZF_PREVIEW_LINES:-\${\$(<$file_preview_size):-0}}
 typeset b1=10000 b2=1000 b3=100 per1=0 per2=30 per3=60 result
@@ -252,6 +255,8 @@ print \\\"change-preview-window(\$result)\\\"
 "
 ```
 
+由于在我目前版本，FZF_PREVIEW_LINES始终为空，所以我使用文件记录预览窗口的行数
+
 # supplement
 
 ## 1 fzf
@@ -265,8 +270,6 @@ FZF_BIN_PREVIEW="([[ \$(file --mime-type -b {}) = *binary* ]] && (echo {} is a b
 
 export FZF_COLORS FZF_HISTFILE FZF_FILE_PREVIEW FZF_DIR_PREVIEW FZF_BIN_PREVIEW
 
-
-# return
 export FZF_DEFAULT_OPTS=" \
 --marker='▍' \
 --scrollbar='█' \
@@ -319,5 +322,6 @@ export FZF_GREP_TMUX_OPTS="-p100%,80%"
 
 ## others
 
-1. 如果没有`lscolors`, 请使用对应的包管理工具下载或访问https://github.com/sharkdp/lscolors下载。
-2. 如果不想要`report`颜色输出，就直接修改源脚本改为`print`, 注意脚本中的report路径
+1. 接下来只对zsh版本做维护
+2. 如果没有`lscolors`, 请使用对应的包管理工具下载或访问https://github.com/sharkdp/lscolors下载。
+3. 如果不想要`report`颜色输出，就直接修改源脚本改为`print`, 注意脚本中的report路径
