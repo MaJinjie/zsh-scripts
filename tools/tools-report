@@ -1,0 +1,48 @@
+#!/bin/env zsh 
+
+# typeset -A COLORS=(
+#     info  4,2
+#     warn  3,8
+#     error 1,5
+#     help 3,2
+#     none 2,6
+# )
+
+typeset -A COLORS=(
+    info  4,5
+    warn  3,5
+    error 1,5
+    help 2,5
+    none 8,5
+)
+
+mktemp_file() {
+    local filename
+    filename=$(mktemp) || {
+        print "tempfile create error"
+        exit $?
+    }
+    trap "rm -f $filename" EXIT SIGINT SIGTERM
+    print $filename
+}
+
+report() {
+    [[ -n $o_level ]] && print $o_args -P "%S%B%F{${o_colors%,*}}$o_level:%s%f%b\t"
+    (($#)) && print -P "%F{${o_colors#*,}}$(print -l ${o_indent:+'\t'}${^@})%f"
+}
+
+main() {
+    local o_indent o_colors o_level o_args=()
+    zparseopts -E -D -F -A zopts -- n -level: -indent -colors: || exit $? 
+
+    (($+zopts[--indent])) && o_indent=1
+    (($+zopts[--colors])) && { [[ -n $COLORS[(I)$zopts[--colors]] ]] && o_colors=$COLORS[$zopts[--colors]] || o_colors=$zopts[--colors] }
+    (($+zopts[--level])) && o_level=$zopts[--level]
+    (($+zopts[-n])) && o_args+="-n"
+
+    [[ -z $o_colors ]] && o_colors=${${COLORS[${o_level:-none}]:-$COLORS[none]}} 
+    
+    report "${@:#--}"
+}
+
+main "$@"
