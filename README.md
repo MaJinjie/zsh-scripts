@@ -24,7 +24,7 @@
 
 ```bash
 ff "fzf-fd -H -d6 --split"
-ss "fzf-rg -d6 --window full --split --args \"-j 2\""
+ss "fzf-rg -d6 --sort none:accessed --window full --split --args \"-j 2\""
 ```
 
 # introduce
@@ -58,6 +58,8 @@ OPTIONS:
     -o select + -O
     -q Cancel the first n matching file names (Optional default 1)
 
+    --sort -> rg --sortr (format default_val:other_val | val(default and other))
+    --Sort -> rg --sort (same as up)
     --help
     --window full none
     --split Explain the parameters passed in by the user as much as possible
@@ -99,6 +101,16 @@ __split() {
                         *)
                             [[ $item =~ h ]] && { ((idx=$o_args[(I)--hidden])) && unset "o_args[idx]" || o_args+=--hidden }
                             [[ $item =~ i ]] && { ((idx=$o_args[(I)--no-ignore])) && unset "o_args[idx]" || o_args+=--no-ignore }
+                            [[ $item =~ s ]] && {
+                                ((idx=$o_dynamic[(I)--sortr[[:space:]=]*])) && {
+                                    [[ $o_dynamic[idx] == *$o_default_map[--sortr] ]] && o_dynamic[idx]=--sortr=$o_normal_map[--sortr] || o_dynamic[idx]=--sortr=$o_default_map[--sortr]
+                                }
+                            }
+                            [[ $item =~ S ]] && {
+                                ((idx=$o_dynamic[(I)--sort[[:space:]=]*])) && {
+                                    [[ $o_dynamic[idx] == *$o_default_map[--sort] ]] && o_dynamic[idx]=--sort=$o_normal_map[--sort] || o_dynamic[idx]=--sort=$o_default_map[--sort]
+                                }
+                            }
                             [[ $item =~ [[:digit:]] ]] && { unset "o_args[${o_args[(i)--max-depth*]}]"; ((idx=${$(grep -oP '\d+' <<<$item)[(w)-1]})) && o_args+="--max-depth=$idx" } # 获取数字序列的最后一个
                             o_types+=( ${(u)${(s//)item}:#[[:digit:]hi,]} )
                             break
@@ -212,6 +224,8 @@ local dynamic=($o_dynamic) types=($o_types) globs=()
             ,#) break ;;
             h) ((idx=\$dynamic[(I)--hidden])) && unset \\\"dynamic[idx]\\\" || dynamic+=--hidden; item= ;;
             i) ((idx=\$dynamic[(I)--no-ignore])) && unset \\\"dynamic[idx]\\\" || dynamic+=--no-ignore; item= ;;
+            s) ((idx=\$dynamic[(I)--sortr[[:space:]=]*])) && { [[ \$dynamic[idx] == *$o_default_map[--sortr] ]] && dynamic[idx]=--sortr=$o_normal_map[--sortr] || dynamic[idx]=--sortr=$o_default_map[--sortr] }; item= ;;
+            S) ((idx=\$dynamic[(I)--sort[[:space:]=]*])) && { [[ \$dynamic[idx] == *$o_default_map[--sort] ]] && dynamic[idx]=--sort=$o_normal_map[--sort] || dynamic[idx]=--sort=$o_default_map[--sort] }; item= ;;
             <->) unset \\\"dynamic[\$dynamic[(i)--max-depth*]]\\\"; ((\$item)) && dynamic+=--max-depth=\$item; item= ;;
             [[:lower:]]##,,*) types+=--type-not=\${item[(ws/,,/)1]}; item=\${item#*,,} ;;
             [[:lower:]]##,*) types+=--type=\${item[(ws/,/)1]}; item=\${item#*,} ;;
@@ -245,8 +259,8 @@ elif ((match_count > b2)); then
     result=\$(( ((b1 - match_count) * (per2 - per1) / (b1 - b2)  + per1) * lines / 100 ))
 elif ((match_count > b3)); then
     result=\$(( ((b2 - match_count) * (per3 - per2) / (b2 - b3)  + per2) * lines / 100 ))
-elif ((match_count > (lines - preview_lines))); then
-    result=\$preview_lines
+elif ((match_count > (100 - per3) * lines / 100)); then
+    result=\$(( per3 * lines / 100 ))
 else
     result=$\((lines - match_count))
 fi
