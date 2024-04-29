@@ -33,6 +33,9 @@ __help() {
         -q Cancel the first n matching file names (Optional, default 1)
         -w world regex
         -u[uu] (Optional default -u)
+        -m --max-count 
+        -1 --max-count=1
+        -L --follow
 
         --sort -> rg --sortr (format default_val:other_val | val(default and other))
         --Sort -> rg --sort (same as up)
@@ -62,25 +65,16 @@ __split() {
         ((o_split)) && [[ $item =~ , ]] && {
             while (($#item)); do
                 case $item in
-                    ,#) break ;;
                     [[:lower:]]##,,*) o_types+=--type-not=${item[(ws/,,/)1]}; item=${item#*,,} ;;
                     [[:lower:]]##,*) o_types+=--type=${item[(ws/,/)1]}; item=${item#*,} ;;
-                    *)
-                        [[ $item =~ h ]] && { ((idx=$o_dynamic[(I)--hidden])) && unset "o_dynamic[idx]" || o_dynamic+=--hidden }
-                        [[ $item =~ i ]] && { ((idx=$o_dynamic[(I)--no-ignore])) && unset "o_dynamic[idx]" || o_dynamic+=--no-ignore }
-                        [[ $item =~ s ]] && { 
-                            ((idx=$o_dynamic[(I)--sortr[[:space:]=]*])) && {
-                                [[ $o_dynamic[idx] == *$o_default_map[--sortr] ]] && o_dynamic[idx]=--sortr=$o_normal_map[--sortr] || o_dynamic[idx]=--sortr=$o_default_map[--sortr] 
-                            }
-                        }
-                        [[ $item =~ S ]] && { 
-                            ((idx=$o_dynamic[(I)--sort[[:space:]=]*])) && {
-                                [[ $o_dynamic[idx] == *$o_default_map[--sort] ]] && o_dynamic[idx]=--sort=$o_normal_map[--sort] || o_dynamic[idx]=--sort=$o_default_map[--sort] 
-                            }
-                        }
-                        [[ $item =~ [[:digit:]] ]] && { unset "o_dynamic[${o_dynamic[(i)--max-depth*]}]"; ((idx=${$(grep -oP '\d+' <<<$item)[(w)-1]})) && o_dynamic+="--max-depth=$idx" } # 获取数字序列的最后一个
-                        break
-                        ;;
+                    ,,*) o_dynamic[$o_dynamic[(i)--max-count*]]=--max-count=1; item=${item#,} ;;
+                    ,*) item=${item#,} ;;
+                    h*) ((idx=$o_dynamic[(I)--hidden])) && unset "o_dynamic[idx]" || o_dynamic+=--hidden; item=${item#h} ;;
+                    i*) ((idx=$o_dynamic[(I)--no-ignore])) && unset "o_dynamic[idx]" || o_dynamic+=--no-ignore; item=${item#i} ;;
+                    s*) ((idx=$o_dynamic[(I)--sortr[[:space:]=]*])) && { [[ $o_dynamic[idx] == *$o_default_map[--sortr] ]] && o_dynamic[idx]=--sortr=$o_normal_map[--sortr] || o_dynamic[idx]=--sortr=$o_default_map[--sortr] }; item=${item#s} ;;
+                    S*) ((idx=$o_dynamic[(I)--sort[[:space:]=]*])) && { [[ $o_dynamic[idx] == *$o_default_map[--sort] ]] && o_dynamic[idx]=--sort=$o_normal_map[--sort] || o_dynamic[idx]=--sort=$o_default_map[--sort] }; item=${item#S} ;;
+                    <->*) unset "o_dynamic[${o_dynamic[(i)--max-depth*]}]"; ((idx=${$(grep -oP '\d+' <<<$item)[(w)1]})) && o_dynamic+="--max-depth=$idx"; item=${item#$idx} ;;
+                    *) report_error "split $item error" ;;
                 esac
             done
             continue
@@ -167,7 +161,7 @@ main() {
     [[ \$FZF_QUERY == *--* ]] && for item in \${(s/ /)\${FZF_QUERY##*--}}; do 
         while ((\$#item)); do
             case \$item in
-                ,#) break ;;
+                ,##) dynamic[\$dynamic[(i)--max-count*]]=--max-count=1; item=${item#,##} ;;
                 h) ((idx=\$dynamic[(I)--hidden])) && unset \\\"dynamic[idx]\\\" || dynamic+=--hidden; item= ;;
                 i) ((idx=\$dynamic[(I)--no-ignore])) && unset \\\"dynamic[idx]\\\" || dynamic+=--no-ignore; item= ;;
                 s) ((idx=\$dynamic[(I)--sortr[[:space:]=]*])) && { [[ \$dynamic[idx] == *$o_default_map[--sortr] ]] && dynamic[idx]=--sortr=$o_normal_map[--sortr] || dynamic[idx]=--sortr=$o_default_map[--sortr] }; item= ;;

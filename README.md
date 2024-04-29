@@ -82,6 +82,7 @@ KEYBINDINGS:
 # 3. --hidden --no-ignore
 # 4. --extension --exclude
 __split() {
+    ((DEBUG)) && set -x
     local item
     for item in "$@"; do
         { [[ -e $item ]] && ((o_q-- < 1)) } && {
@@ -89,40 +90,26 @@ __split() {
             continue
         }
         ((o_split)) && [[ $item =~ , ]] && {
-            if [[ $item =~ ^(\\.|[[:digit:]]+[mhdwMy]|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}[[:space:]][[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2}),(\\.|[[:digit:]]+[mhdwMy]|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}[[:space:]][[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2})?$ ]]; then
-                [[ $item =~ ^[^.] ]] && o_args+="--changed-after=${item%,*}"
-                [[ $item =~ [^.,]$ ]] && o_args+="--changed-before=${item#*,}"
-            else
-                while (($#item)); do
-                    case $item in
-                        ,#) break ;;
-                        [[:lower:]]##,,*) o_excludes+="*.${item[(ws/,,/)1]}"; item=${item#*,,} ;;
-                        [[:lower:]]##,*) o_extensions+=${item[(ws/,/)1]}; item=${item#*,} ;;
-                        *)
-                            [[ $item =~ h ]] && { ((idx=$o_args[(I)--hidden])) && unset "o_args[idx]" || o_args+=--hidden }
-                            [[ $item =~ i ]] && { ((idx=$o_args[(I)--no-ignore])) && unset "o_args[idx]" || o_args+=--no-ignore }
-                            [[ $item =~ s ]] && {
-                                ((idx=$o_dynamic[(I)--sortr[[:space:]=]*])) && {
-                                    [[ $o_dynamic[idx] == *$o_default_map[--sortr] ]] && o_dynamic[idx]=--sortr=$o_normal_map[--sortr] || o_dynamic[idx]=--sortr=$o_default_map[--sortr]
-                                }
-                            }
-                            [[ $item =~ S ]] && {
-                                ((idx=$o_dynamic[(I)--sort[[:space:]=]*])) && {
-                                    [[ $o_dynamic[idx] == *$o_default_map[--sort] ]] && o_dynamic[idx]=--sort=$o_normal_map[--sort] || o_dynamic[idx]=--sort=$o_default_map[--sort]
-                                }
-                            }
-                            [[ $item =~ [[:digit:]] ]] && { unset "o_args[${o_args[(i)--max-depth*]}]"; ((idx=${$(grep -oP '\d+' <<<$item)[(w)-1]})) && o_args+="--max-depth=$idx" } # 获取数字序列的最后一个
-                            o_types+=( ${(u)${(s//)item}:#[[:digit:]hi,]} )
-                            break
-                            ;;
-                    esac
-                done
-            fi
+            while (($#item)); do
+                case $item in
+                    [[:lower:]]##,,*) o_types+=--type-not=${item[(ws/,,/)1]}; item=${item#*,,} ;;
+                    [[:lower:]]##,*) o_types+=--type=${item[(ws/,/)1]}; item=${item#*,} ;;
+                    ,,*) o_dynamic[$o_dynamic[(i)--max-count*]]=--max-count=1; item=${item#,} ;;
+                    ,*) item=${item#,} ;;
+                    h*) ((idx=$o_dynamic[(I)--hidden])) && unset "o_dynamic[idx]" || o_dynamic+=--hidden; item=${item#h} ;;
+                    i*) ((idx=$o_dynamic[(I)--no-ignore])) && unset "o_dynamic[idx]" || o_dynamic+=--no-ignore; item=${item#i} ;;
+                    s*) ((idx=$o_dynamic[(I)--sortr[[:space:]=]*])) && { [[ $o_dynamic[idx] == *$o_default_map[--sortr] ]] && o_dynamic[idx]=--sortr=$o_normal_map[--sortr] || o_dynamic[idx]=--sortr=$o_default_map[--sortr] }; item=${item#s} ;;
+                    S*) ((idx=$o_dynamic[(I)--sort[[:space:]=]*])) && { [[ $o_dynamic[idx] == *$o_default_map[--sort] ]] && o_dynamic[idx]=--sort=$o_normal_map[--sort] || o_dynamic[idx]=--sort=$o_default_map[--sort] }; item=${item#S} ;;
+                    <->*) unset "o_dynamic[${o_dynamic[(i)--max-depth*]}]"; ((idx=${$(grep -oP '\d+' <<<$item)[(w)1]})) && o_dynamic+="--max-depth=$idx"; item=${item#$idx} ;;
+                    *) report_error "split $item error" ;;
+                esac
+            done
             continue
         }
         [[ -z $Pattern ]] || report_error "$item error, pattern is exists"
         Pattern=$item
     done
+    ((DEBUG)) && set +x
 }
 
 # 解释： 以sh或zsh作为拓展名，不包含*.cc(也就是不以cc作为拓展名)，深度为10，切换--hidden --no-ignore参数，可执行文件 修改时间为[1d,1h](一天前到1小时前), 正则模式为bash
@@ -162,7 +149,12 @@ usage: ss [OPTIONS] [pattern] [DIRECTORIES or Files]
         -q Cancel the first n matching file names (Optional, default 1)
         -w world regex
         -u[uu] (Optional default -u)
+        -m --max-count
+        -1 --max-count=1
+        -L --follow
 
+        --sort -> rg --sortr (format default_val:other_val | val(default and other))
+        --Sort -> rg --sort (same as up)
         --help
         --window full none
         --split Explain the parameters passed in by the user as much as possible
@@ -221,7 +213,7 @@ local dynamic=($o_dynamic) types=($o_types) globs=()
 [[ \$FZF_QUERY == *--* ]] && for item in \${(s/ /)\${FZF_QUERY##*--}}; do
     while ((\$#item)); do
         case \$item in
-            ,#) break ;;
+            ,) dynamic[\$dynamic[(i)--max-count*]]=--max-count=1; item=${item#,} ;;
             h) ((idx=\$dynamic[(I)--hidden])) && unset \\\"dynamic[idx]\\\" || dynamic+=--hidden; item= ;;
             i) ((idx=\$dynamic[(I)--no-ignore])) && unset \\\"dynamic[idx]\\\" || dynamic+=--no-ignore; item= ;;
             s) ((idx=\$dynamic[(I)--sortr[[:space:]=]*])) && { [[ \$dynamic[idx] == *$o_default_map[--sortr] ]] && dynamic[idx]=--sortr=$o_normal_map[--sortr] || dynamic[idx]=--sortr=$o_default_map[--sortr] }; item= ;;
