@@ -153,6 +153,7 @@ main() {
     exitcode=$?
 
     if ((exitcode == 1)); then report_warn  "没有搜索到任何相关的文件";
+    elif ((exitcode == 2)); then report_error;
     elif ((exitcode == 130)); then :;
     elif ((o_output)); then print $Results;
     else __handle_result;fi

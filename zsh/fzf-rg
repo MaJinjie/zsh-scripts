@@ -112,11 +112,12 @@ __handle_result() {
 main() {
     local o_q o_types=() o_dynamic=() o_window o_split o_args=()
     local -A o_default_map o_normal_map
-    zparseopts -D -E -F -A zopts -- q:: w x u:: L H I d: t: T: -Sort: -sort: -window: -help -split -args: || exit 1
+    zparseopts -D -E -F -A zopts -- 1 m: q:: w x u:: L H I d: t: T: -Sort: -sort: -window: -help -split -args: || exit 1
     setopt extended_glob
 
     ((DEBUG)) && set -x
     
+    (($+zopts[-m])) && o_args+="--max-count=$zopts[-m]"
     (($+zopts[-w])) && o_args+="-w"
     (($+zopts[-x])) && o_args+="-x"
     (($+zopts[-L])) && o_args+="-L"
@@ -127,6 +128,7 @@ main() {
     (($+zopts[-t])) && o_types+=( $(print -- --type=${^${(s/,/)zopts[-t]}}) )
     (($+zopts[-T])) && o_types+=( $(print -- --type-not=${^${(s/,/)zopts[-T]}}) )
     (($+zopts[-q])) && o_q=${zopts[-q]:-1}
+    (($+zopts[-1])) && o_args+="--max-count=1"
     
     (($+zopts[--Sort]))  && { o_default_map[--sort]=${zopts[--Sort]%:*}; o_normal_map[--sort]=${zopts[--Sort]#*:} }
     (($+zopts[--sort]))  && { o_default_map[--sortr]=${zopts[--sort]%:*}; o_normal_map[--sortr]=${zopts[--sort]#*:} }
@@ -242,6 +244,7 @@ main() {
     exitcode=$?
 
     if ((exitcode == 1)); then report_warn  "没有搜索到任何相关的文件";
+    elif ((exitcode == 2)); then report_error;
     elif ((exitcode == 130)); then :;
     else __handle_result;fi
     
