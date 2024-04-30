@@ -5,12 +5,7 @@
 # 1. 能够解析常用的参数
 # 2. 接受目录或文件
 # 3. 能够在fzf过滤时，解释--iglob --hidden --no-ignore --max-depth --type --type-not
-# 4. 尽可能解释用户传入的参数 flags:hi[:digit:]sS
-#   1. ,10 max-depth=10
-#   2. cpp,c, --type=cpp 
-#   3. cc,, --type-not=c
-#   4. ,0 去除depth标志
-#   5. ,hi 切换--hidden --no-ignore
+# 4. 尽可能解释用户传入的参数
 # 5. 解决了\b的转义问题
 
 
@@ -34,11 +29,11 @@ __help() {
         -w world regex
         -u[uu] (Optional default -u)
         -m --max-count 
-        -1 --max-count=1
         -L --follow
 
         --sort -> rg --sortr (format default_val:other_val | val(default and other))
         --Sort -> rg --sort (same as up)
+        --no-warm 初始查询字符串为空时，不进行热缓冲
         --help 
         --window full none
         --split Explain the parameters passed in by the user as much as possible
@@ -56,26 +51,60 @@ __help() {
 
 __split() {
     ((DEBUG)) && set -x
-    local item
+    local item idx opt
+    local match class context flags
     for item in "$@"; do 
         { [[ -e $item ]] && ((o_q-- < 1)) } && {
             [[ -d $item ]] && Directories+=$item || Files+=$item
             continue
         }
-        ((o_split)) && [[ $item =~ , ]] && {
-            while (($#item)); do
-                case $item in
-                    [[:lower:]]##,,*) o_types+=--type-not=${item[(ws/,,/)1]}; item=${item#*,} ;;
-                    [[:lower:]]##,*) o_types+=--type=${item[(ws/,/)1]}; item=${item##[^,]#} ;;
-                    ,,*) o_dynamic[$o_dynamic[(i)--max-count*]]=--max-count=1; item=${item#,} ;;
-                    ,*) item=${item#,} ;;
-                    h*) ((idx=$o_dynamic[(I)--hidden])) && unset "o_dynamic[idx]" || o_dynamic+=--hidden; item=${item#h} ;;
-                    i*) ((idx=$o_dynamic[(I)--no-ignore])) && unset "o_dynamic[idx]" || o_dynamic+=--no-ignore; item=${item#i} ;;
-                    s*) ((idx=$o_dynamic[(I)--sortr[[:space:]=]*])) && { [[ $o_dynamic[idx] == *$o_default_map[--sortr] ]] && o_dynamic[idx]=--sortr=$o_normal_map[--sortr] || o_dynamic[idx]=--sortr=$o_default_map[--sortr] }; item=${item#s} ;;
-                    S*) ((idx=$o_dynamic[(I)--sort[[:space:]=]*])) && { [[ $o_dynamic[idx] == *$o_default_map[--sort] ]] && o_dynamic[idx]=--sort=$o_normal_map[--sort] || o_dynamic[idx]=--sort=$o_default_map[--sort] }; item=${item#S} ;;
-                    <->*) unset "o_dynamic[${o_dynamic[(i)--max-depth*]}]"; ((idx=${$(grep -oP '\d+' <<<$item)[(w)1]})) && o_dynamic+="--max-depth=$idx"; item=${item#$idx} ;;
-                    *) report_error "split $item error" ;;
+        ((o_split)) && [[ $item =~ '^([[:alpha:]]([[:punct:]]).*\2)+[[:alpha:]]*$'  ]] && {
+            flags=( ${(s//)item##*[[:punct:]]} )
+            while [[ $item =~ '^[[:alpha:]]([[:punct:]]).*?\1' ]]; do
+                class=$MATCH[1] context=$MATCH[3,-2] match=$MATCH 
+                case $class in 
+                    f) 
+                        while (($#context)); do 
+                            if [[ $context =~ ^h ]]; then
+                                ((idx=$o_dynamic[(I)--hidden])) && unset "o_dynamic[idx]" || o_dynamic+=--hidden
+                            elif [[ $context =~ ^i ]]; then
+                                ((idx=$o_dynamic[(I)--no-ignore])) && unset "o_dynamic[idx]" || o_dynamic+=--no-ignore
+                            elif [[ $context =~ ^o ]]; then
+                                 o_dynamic[$o_dynamic[(i)--max-count*]]=--max-count=1
+                            elif [[ $context =~ ^s ]]; then
+                                ((flags[(I)r])) && opt=--sort= || opt=--sortr=
+                                ((idx=$o_dynamic[(I)$opt*])) && if [[ $o_dynamic[idx] == *$o_default_map[${opt%=}] ]]; then
+                                    o_dynamic[idx]=$opt$o_normal_map[${opt%=}]
+                                else
+                                    o_dynamic[idx]=$opt$o_default_map[${opt%=}]
+                                fi
+                            elif [[ $context =~ ^[[:digit:]]+ ]]; then
+                                unset "o_dynamic[${o_dynamic[(i)--max-depth*]}]"
+                                ((MATCH)) && o_dynamic+="--max-depth=$MATCH"
+                            else
+                                report_error "class:$class" "$context" "内容错误"
+                            fi
+                            context=${context#$MATCH}
+                        done
+                        ;;
+                    t)
+                        ((flags[(I)r])) && opt=--type-not= || opt=--type=
+                        o_types+=( $(print -- $opt${^${(s/,/)context}}) )
+                        ;;
+                    e)
+                        ((flags[(I)r])) && opt="--iglob=!" || opt="--iglob="
+                        o_iglobs+=( $(print -- \'$opt\*.${^${(@s/,/)context}}\') )
+                        ;;
+                    g)
+                        ((flags[(I)r])) && opt="--iglob=!" || opt="--iglob="
+                        o_iglobs+=( $(print -- \'$opt${^${(@s/,/)context}}\') )
+                        ;;
+                    *)
+                        report_error "class:$class" "类别错误"
+                        ;;
                 esac
+                item=${item#$match}
+                
             done
             continue
         }
@@ -104,14 +133,21 @@ __handle_result() {
 
 
 main() {
-    local o_q o_types=() o_dynamic=() o_window o_split o_args=()
+    local o_q o_types=() o_dynamic=() o_iglobs=() o_window o_split o_args=()
     local -A o_default_map o_normal_map
-    zparseopts -D -E -F -A zopts -- 1 m: q:: w x u:: L H I d: t: T: -Sort: -sort: -window: -help -split -args: || exit 1
+    zparseopts -D -E -F -A zopts -- \
+        q:: t: T: \
+        w x L u:: \
+        H I d: m: g: -Sort: -sort: \
+        -no-warm -window: -help -split -args: || exit 1
     setopt extended_glob
+    setopt rematchpcre
 
     ((DEBUG)) && set -x
     
-    (($+zopts[-m])) && o_args+="--max-count=$zopts[-m]"
+    (($+zopts[-q])) && o_q=${zopts[-q]:-1}
+    (($+zopts[-t])) && o_types+=( $(print -- --type=${^${(s/,/)zopts[-t]}}) )
+    (($+zopts[-T])) && o_types+=( $(print -- --type-not=${^${(s/,/)zopts[-T]}}) )
     (($+zopts[-w])) && o_args+="-w"
     (($+zopts[-x])) && o_args+="-x"
     (($+zopts[-L])) && o_args+="-L"
@@ -119,13 +155,11 @@ main() {
     (($+zopts[-H])) && o_dynamic+="--hidden"
     (($+zopts[-I])) && o_dynamic+="--no-ignore"
     (($+zopts[-d])) && o_dynamic+="--max-depth=$zopts[-d]"
-    (($+zopts[-t])) && o_types+=( $(print -- --type=${^${(s/,/)zopts[-t]}}) )
-    (($+zopts[-T])) && o_types+=( $(print -- --type-not=${^${(s/,/)zopts[-T]}}) )
-    (($+zopts[-q])) && o_q=${zopts[-q]:-1}
-    (($+zopts[-1])) && o_args+="--max-count=1"
+    (($+zopts[-m])) && o_dynamic+="--max-count=$zopts[-m]"
     
-    (($+zopts[--Sort]))  && { o_default_map[--sort]=${zopts[--Sort]%:*}; o_normal_map[--sort]=${zopts[--Sort]#*:} }
-    (($+zopts[--sort]))  && { o_default_map[--sortr]=${zopts[--sort]%:*}; o_normal_map[--sortr]=${zopts[--sort]#*:} }
+    (($+zopts[--Sort]))   && { o_default_map[--sort]=${zopts[--Sort]%:*}; o_normal_map[--sort]=${zopts[--Sort]#*:} }
+    (($+zopts[--sort]))   && { o_default_map[--sortr]=${zopts[--sort]%:*}; o_normal_map[--sortr]=${zopts[--sort]#*:} }
+    (($+zopts[--no-warm]))&& o_default_map[--no-warm]=1
     (($+zopts[--split]))  && o_split=1
     (($+zopts[--window])) && o_window=$zopts[--window]
     (($+zopts[--args]))   && o_args+=(${=zopts[--args]})
@@ -146,7 +180,7 @@ main() {
     file_rg=/tmp/rg-$$
     file_fzf=/tmp/fzf-$$
     file_preview_size=/tmp/preview-size-$$
-    trap "command rm -f $file_r $file_f $file_preview_size" EXIT SIGINT SIGTERM
+    trap "command rm -f $file_rg $file_fzf $file_preview_size" EXIT SIGINT SIGTERM
 
     (($#)) && __split "$@"
 
@@ -157,11 +191,11 @@ main() {
     
     change_reload="
     setopt extended_glob
-    local dynamic=($o_dynamic) types=($o_types) globs=()
+    local item dynamic=($o_dynamic) types=($o_types) iglobs=(\\\"${(@)o_iglobs}\\\")
     [[ \$FZF_QUERY == *--* ]] && for item in \${(s/ /)\${FZF_QUERY##*--}}; do 
         while ((\$#item)); do
             case \$item in
-                ,##) dynamic[\$dynamic[(i)--max-count*]]=--max-count=1; item=${item#,##} ;;
+                o) dynamic[\$dynamic[(i)--max-count*]]=--max-count=1; item=${item#,##} ;;
                 h) ((idx=\$dynamic[(I)--hidden])) && unset \\\"dynamic[idx]\\\" || dynamic+=--hidden; item= ;;
                 i) ((idx=\$dynamic[(I)--no-ignore])) && unset \\\"dynamic[idx]\\\" || dynamic+=--no-ignore; item= ;;
                 s) ((idx=\$dynamic[(I)--sortr[[:space:]=]*])) && { [[ \$dynamic[idx] == *$o_default_map[--sortr] ]] && dynamic[idx]=--sortr=$o_normal_map[--sortr] || dynamic[idx]=--sortr=$o_default_map[--sortr] }; item= ;;
@@ -169,12 +203,12 @@ main() {
                 <->) unset \\\"dynamic[\$dynamic[(i)--max-depth*]]\\\"; ((\$item)) && dynamic+=--max-depth=\$item; item= ;;
                 [[:lower:]]##,,*) types+=--type-not=\${item[(ws/,,/)1]}; item=\${item#*,,} ;;
                 [[:lower:]]##,*) types+=--type=\${item[(ws/,/)1]}; item=\${item#*,} ;;
-                *) globs+=\\\"'--iglob=\$item'\\\"; item= ;;
+                *) iglobs+=\\\"'--iglob=\$item'\\\"; item= ;;
             esac
         done
     done
     if [[ -n \$FZF_QUERY ]]; then
-        print -r \\\"reload($cmd \${(u)dynamic} \${(u)types} \${(u)globs} -- '\${\${FZF_QUERY%--*}%% #}' ${Directories} ${Files} || true)\\\"
+        print -r \\\"reload($cmd \${(u)dynamic} \${(u)types} \${(u)iglobs} -- '\${\${FZF_QUERY%--*}%% #}' ${Directories} ${Files} || true)\\\"
     else
         print -r \\\"reload(:)\\\"
     fi
@@ -211,7 +245,11 @@ main() {
 
     initial_search="
     if [[ -z '\{q}' ]]; then
-        print \\\"ignore\\\"
+        if (($o_default_map[--no-warm])); then
+            print \\\"ignore\\\"
+        else
+            print \\\"execute-silent:$cmd $o_dynamic $o_types -- \\\{q} ${Directories} ${Files} &> /dev/null &\\\"
+        fi
     else
         print \\\"reload:$cmd $o_dynamic $o_types -- \\\{q} ${Directories} ${Files}\\\"
     fi
@@ -229,7 +267,7 @@ main() {
     --bind \"resize:transform:$change_preview\"
     --bind \"ctrl-g:transform:$toggle_search\"
     --delimiter :
-    --header-first --header=\"keybindings:: C-s, C-v, C-o, A-e, A-enter | pattern:: h i <-> *.cc cpp, c,, cpp,c,java,,\"
+    --header-first --header=\"keybindings:: C-s, C-v, C-o, A-e, A-enter | pattern:: h i o <-> *.cc cpp, c,, cpp,c,java,,\"
     --preview-window \"up:~1,+{2}/2:border-down\"
     --preview 'bat --style=numbers,header,changes,snip --color=always --highlight-line {2} -- {1}'
     --expect \"alt-s,alt-v,alt-o,alt-enter\"

@@ -3,12 +3,6 @@
 # 1. 能够解析常用的参数
 # 2. 接受目录或文件
 # 3. 尽可能地解释用户传入的参数(很完美，几乎完全避免了和文件名或模式冲突)
-#   1. ,10xf, max-depth=10 --type=x --type=f
-#   2. 1d,1h [1d,1h] 2024-04-20,2024-04-25
-#   3. cc,py, extensions=cc ... 
-#   4. h,, exclude=*.h
-#   5. ,0 去除depth标志
-#   6. ,hi 切换--hidden --no-ignore
 
 REPORT_BIN=tools-report
 
@@ -50,32 +44,57 @@ help() {
 
 __split() {
     ((DEBUG)) && set -x
-    local item
+    local item idx
+    local match class context flags
     for item in "$@"; do 
         { [[ -e $item ]] && ((o_q-- < 1)) } && {
             [[ -d $item ]] && Directories+=$item || Files+=$item
             continue
         }
-        ((o_split)) && [[ $item =~ , ]] && {
-            if [[ $item =~ ^(\\.|[[:digit:]]+[mhdwMy]|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}[[:space:]][[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2}),(\\.|[[:digit:]]+[mhdwMy]|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}[[:space:]][[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2})?$ ]]; then 
-                [[ $item =~ ^[^.] ]] && o_args+="--changed-after=${item%,*}"
-                [[ $item =~ [^.,]$ ]] && o_args+="--changed-before=${item#*,}"
-            else
-                while (($#item)); do
-                    case $item in
-                        ,#) break ;;
-                        [[:lower:]]##,,*) o_excludes+="*.${item[(ws/,,/)1]}"; item=${item#*,,} ;;
-                        [[:lower:]]##,*) o_extensions+=${item[(ws/,/)1]}; item=${item#*,} ;;
-                        *)
-                            [[ $item =~ h ]] && { ((idx=$o_args[(I)--hidden])) && unset "o_args[idx]" || o_args+=--hidden }
-                            [[ $item =~ i ]] && { ((idx=$o_args[(I)--no-ignore])) && unset "o_args[idx]" || o_args+=--no-ignore }
-                            [[ $item =~ [[:digit:]] ]] && { unset "o_args[${o_args[(i)--max-depth*]}]"; ((idx=${$(grep -oP '\d+' <<<$item)[(w)-1]})) && o_args+="--max-depth=$idx" } # 获取数字序列的最后一个
-                            o_types+=( ${(u)${(s//)item}:#[[:digit:]hi,]} )
-                            break
-                            ;;
-                    esac
-                done
-            fi
+        ((o_split)) && [[ $item =~ '^([[:alpha:]]([[:punct:]]).*\2)+[[:alpha:]]*$'  ]] && {
+            flags=( ${(s//)item##*[[:punct:]]} )
+            while [[ $item =~ '^[[:alpha:]]([[:punct:]]).*?\1' ]]; do
+                class=$MATCH[1] context=$MATCH[3,-2] match=$MATCH 
+                case $class in 
+                    f) 
+                        while (($#context)); do 
+                            if [[ $context =~ ^h ]]; then
+                                ((idx=$o_args[(I)--hidden])) && unset "o_args[idx]" || o_args+=--hidden
+                            elif [[ $context =~ ^i ]]; then
+                                ((idx=$o_args[(I)--no-ignore])) && unset "o_args[idx]" || o_args+=--no-ignore
+                            elif [[ $context =~ ^g ]]; then
+                                ((idx=$o_args[(I)--glob])) && unset "o_args[idx]" || o_args+=--glob
+                            elif [[ $context =~ ^a ]]; then
+                                ((idx=$o_args[(I)--full-path])) && unset "o_args[idx]" || o_args+=--full-path
+                            elif [[ $context =~ ^[dfxlebcsp] ]]; then
+                                o_types+=$MATCH
+                            elif [[ $context =~ ^[[:digit:]]+ ]]; then
+                                unset "o_args[${o_args[(i)--max-depth*]}]"
+                                ((MATCH)) && o_args+="--max-depth=$MATCH"
+                            else
+                                report_error "class:$class" "$context" "内容错误"
+                            fi
+                            context=${context#$MATCH}
+                        done
+                        ;;
+                    t)
+                        local after before 
+                        ((flags[(I)r])) && {after=before; before=after;} || {after=after; before=before;}
+                        [[ $context =~ ^[^,]* && -n $MATCH ]] && o_args+="--changed-$after=$MATCH"
+                        context=${context#$MATCH}
+                        [[ $context =~ [^,]*$ && -n $MATCH ]] && o_args+="--changed-$before=$MATCH"
+                        ;;
+                    e)
+                        ((flags[(I)r])) && o_excludes+=( $(print -- \*.${^${(s/,/)context}}) ) || o_extensions+=( ${(s/,/)context} )
+                        ;;
+                    x|E)
+                        o_excludes+=( $(print -- ${^${(s/,/)context}}) )                        ;;
+                    *)
+                        report_error "class:$class" "类别错误"
+                        ;;
+                esac
+                item=${item#$match}
+            done
             continue
         }
         [[ -z $Pattern ]] || report_error "$item error, pattern is exists"
@@ -104,6 +123,7 @@ main() {
     local o_q o_extensions=() o_types=() o_excludes=() o_window o_split o_output o_args=()
     zparseopts -D -E -F -A zopts -- q:: g p t: T: d: H I u e: E: -window: -output -help -split -args: || exit 1
     setopt extended_glob
+    setopt rematchpcre
 
     (($+zopts[-g])) && o_args+="--glob"
     (($+zopts[-p])) && o_args+="--full-path"
