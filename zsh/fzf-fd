@@ -49,6 +49,7 @@ help() {
 }
 
 __split() {
+    ((DEBUG)) && set -x
     local item
     for item in "$@"; do 
         { [[ -e $item ]] && ((o_q-- < 1)) } && {
@@ -80,6 +81,7 @@ __split() {
         [[ -z $Pattern ]] || report_error "$item error, pattern is exists"
         Pattern=$item
     done
+    ((DEBUG)) && set +x
 }
 
 __handle_result() {
@@ -141,14 +143,15 @@ main() {
     --expect \"alt-s,alt-v,alt-o,alt-enter\"
     --bind=\"alt-e:execute(${EDITOR} {+} > /dev/tty < /dev/tty)\"
     --bind=\"alt-s:accept,alt-v:accept,alt-enter:accept,enter:accept\"
-    --bind=\"one:select\"
     $FZF_CUSTOM_OPTS
     "
     
     Results=$( 
     { 
+        ((DEBUG)) && set -x
         (($#Files)) && lscolors <<<${(F)Files}
         (($#Directories || !$#Files)) && eval $cmd --type=${^o_types:-f} --extension=${^o_extensions} \"--exclude=${^o_excludes}\" \"${Pattern:-\^}\" $Directories
+        ((DEBUG)) && set +x
     } | FZF_DEFAULT_OPTS=$fopts ${fbin:-fzf})
     exitcode=$?
 

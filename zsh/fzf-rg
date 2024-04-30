@@ -65,8 +65,8 @@ __split() {
         ((o_split)) && [[ $item =~ , ]] && {
             while (($#item)); do
                 case $item in
-                    [[:lower:]]##,,*) o_types+=--type-not=${item[(ws/,,/)1]}; item=${item#*,,} ;;
-                    [[:lower:]]##,*) o_types+=--type=${item[(ws/,/)1]}; item=${item#*,} ;;
+                    [[:lower:]]##,,*) o_types+=--type-not=${item[(ws/,,/)1]}; item=${item#*,} ;;
+                    [[:lower:]]##,*) o_types+=--type=${item[(ws/,/)1]}; item=${item##[^,]#} ;;
                     ,,*) o_dynamic[$o_dynamic[(i)--max-count*]]=--max-count=1; item=${item#,} ;;
                     ,*) item=${item#,} ;;
                     h*) ((idx=$o_dynamic[(I)--hidden])) && unset "o_dynamic[idx]" || o_dynamic+=--hidden; item=${item#h} ;;
@@ -173,7 +173,11 @@ main() {
             esac
         done
     done
-    print -r \\\"reload($cmd \${(u)dynamic} \${(u)types} \${(u)globs} -- '\${\${FZF_QUERY%--*}%% #}' ${Directories} ${Files} || true)\\\"
+    if [[ -n \$FZF_QUERY ]]; then
+        print -r \\\"reload($cmd \${(u)dynamic} \${(u)types} \${(u)globs} -- '\${\${FZF_QUERY%--*}%% #}' ${Directories} ${Files} || true)\\\"
+    else
+        print -r \\\"reload(:)\\\"
+    fi
     "
 
     change_preview="
