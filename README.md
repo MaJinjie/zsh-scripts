@@ -429,3 +429,11 @@ export FZF_GREP_TMUX_OPTS="-p100%,80%"
 1. 接下来只对zsh版本做维护
 2. 如果没有`lscolors`, 请使用对应的包管理工具下载或访问https://github.com/sharkdp/lscolors下载。
 3. 如果不想要`report`颜色输出，就直接修改源脚本改为`print`, 注意脚本中的report路径
+
+# 总结
+
+编写zsh脚本的过程，也是学习zsh与bash不同的过程。
+相较于bash，zsh对变量的解析更加精细，对变量可用的操作也更多。
+最典型的也是最常用的字符串和数组之间的变换，zsh只需要简单使用变量标志即可，而bash却可能写一个循环。
+zsh中，通配符拓展以及`zsh/pcre`引擎都很好。
+只有用过的人，才能深有体会。
