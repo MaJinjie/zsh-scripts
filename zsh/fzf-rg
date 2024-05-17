@@ -76,7 +76,8 @@ __help() {
 __split() {
     local item
     for item in "$@"; do 
-        [[ -e $item ]] && {
+        { [[ -z $o_custom["root-dir"] && -e $item ]] || [[ -n $o_custom["root-dir"] && -e $o_custom["root-dir"]/$item ]] } && {
+            [[ -n $o_custom["root-dir"] ]] && item=$o_custom/$item
             Search_paths+=$item
             [[ -d $item ]] && Search_dirs+=$item
             continue
@@ -168,7 +169,7 @@ main() {
     (($+zopts[--border-lines]))         && o_custom["border-lines"]=$zopts[--border-lines]
     (($+zopts[--query]))                && o_custom[query]=$zopts[--query]
     (($+zopts[--style]))                && o_custom[style]=$zopts[--style]
-    
+
     local file_rg file_fzf file_reload file_childid
     local Search_paths=() Search_dirs=() Pattern Results Root_dir
     local fopts cmd exitcode  
