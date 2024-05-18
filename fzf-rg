@@ -6,34 +6,20 @@
 # 2. 接受目录或文件
 # 3. 能够在fzf过滤时，解释--iglob --hidden --no-hidden --no-ignore --ignore --max-depth --type subdir
 # 4. In the commandline, 尽可能解释用户传入的参数
-# 5. 
 
 setopt EXTENDED_GLOB
 setopt REMATCHPCRE
 
-function print_msg () {
-    local tag context tcolor ccolor
+0=${${(M)${(%):-%N}:#/*}:-$PWD/$0}
 
-    tag=$1 context=${@:2}
-    case $tag in 
-        info)   tcolor=blue ccolor=magenta ;;
-        warn)   tcolor=yellow ccolor=magenta ;;
-        error)  tcolor=red ccolor=magenta ;;
-        help)   tcolor=green ccolor=magenta ;;
-        *)      print -- "$@"; exit 0 ;;
-    esac
-    context="%B%S%F{$tcolor}$tag%b%s%f : %F{$ccolor}$context%f"
-
-    print -- "${(%):-$context}"    
-}
+function print_msg () { ${0:h}/functions/print_msg "$@" }
 
 function startup_fzf() {
     if [[ $1 == --popup ]] && (($+commands[fzf-tmux])); then
-        fzf-tmux $FZF_TMUX_OPTS "${@:2}"
+        fzf-tmux $FZF_TMUX_OPTS "${@:2}" <&0
     else
         fzf "$@"
     fi
-    exitcode=$?
 }
 
 __help() {

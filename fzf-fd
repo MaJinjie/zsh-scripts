@@ -4,20 +4,10 @@ setopt EXTENDED_GLOB
 setopt REMATCHPCRE
 setopt KSHGLOB
 
+0=${${(M)${(%):-%N}:#/*}:-$PWD/$0}
+
 function print_msg () {
-    local tag context tcolor ccolor
-
-    tag=$1 context=${@:2}
-    case $tag in 
-        info)   tcolor=blue ccolor=magenta ;;
-        warn)   tcolor=yellow ccolor=magenta ;;
-        error)  tcolor=red ccolor=magenta ;;
-        help)   tcolor=green ccolor=magenta ;;
-        *)      print -- "$@"; exit 0 ;;
-    esac
-    context="%B%S%F{$tcolor}$tag%b%s%f : %F{$ccolor}$context%f"
-
-    print -- "${(%):-$context}"    
+    ${0:h}/functions/print_msg "$@"
 }
 
 function startup_fzf() {
@@ -130,6 +120,9 @@ __handle_result() {
 main() {
     local o_dynamic=() o_types o_extensions=() o_args=()
     local -A o_custom
+
+    local Search_dirs=() Search_files=() Root_dir Pattern Results
+    local rmidx fopts cmd exitcode
     
     zparseopts -D -E -F -A zopts -- \
         g p t: d: H I e: \
@@ -148,19 +141,15 @@ main() {
     (($+zopts[-t]))         && o_types=$zopts[-t]
     (($+zopts[-e]))         && o_extensions+=( ${(s/,/)zopts[-e]} )
 
-    (($+zopts[--query]))    && o_custom[query]=$zopts[--query]
-    (($+zopts[--root-dir])) && o_custom["root-dir"]=$zopts[--root-dir]
     (($+zopts[--split]))    && o_custom[split]=
     (($+zopts[--popup]))    && o_custom[popup]=
     (($+zopts[--alias]))    && o_custom[alias]=
     
     (($+zopts[--help]))     && __help
 
-    local Search_dirs=() Search_files=() Root_dir Pattern Results
-    local rmidx fopts cmd exitcode
+    (($+zopts[--query]))    && Pattern=$zopts[--query]
+    (($+zopts[--root-dir])) && Root_dir=$zopts[--root-dir]
 
-    [[ -n $o_custom["root-dir"] ]] && Root_dir=$o_custom["root-dir"]
-    
     rmidx=${@[(i)--]}
     ((rmidx < $#)) && o_args+=( "${@:$((rmidx+1))}" )
     ((rmidx > 1))  && __split "${@:1:$((rmidx-1))}"
@@ -168,7 +157,6 @@ main() {
     { ! (($#Search_dirs)) && [[ -n $Root_dir ]] } && Search_dirs+=$Root_dir
     
     cmd="command fd --color=always --follow $o_args $o_dynamic "
-    print $cmd
 
     fopts="
     $FZF_DEFAULT_OPTS
@@ -185,13 +173,13 @@ main() {
     
     Results=$( 
     { 
-        (($#Search_files)) && lscolors <<<${(F)Files}
+        (($#Search_files)) && lscolors < <( for item in $Search_files; do [[ $item =~ $Pattern ]] && print $item; done )
         (($#Search_dirs || $#Search_files == 0)) && eval $cmd --type=${(s//)^o_types:-f} --extension=${^o_extensions}  ${(qq)Pattern:-\^} ${(@qq)Search_dirs}
     } | FZF_DEFAULT_OPTS="$fopts" startup_fzf ${+o_custom[popup]+--popup} )
     exitcode=$?
     
-    if ((exitcode == 1)); then print_msg warn  "not search any files";
-    elif ((exitcode == 2)); then print_msg warn "not match files";
+    if ((exitcode == 1)); then print_msg warn  "($cmd)not search any files";
+    elif ((exitcode == 2)); then print_msg warn "($cmd)not match files";
     elif ((exitcode == 130)); then ;
     else __handle_result;fi
 
