@@ -33,6 +33,7 @@ function startup_fzf() {
     else
         fzf "$@"
     fi
+    exitcode=$?
 }
 
 __help() {
@@ -60,11 +61,8 @@ __help() {
         --root-dir filter base dir
         --style opetional: init-query, ltrim, space-trigger
 
-        
         --help 
     KEYBINDINGS:
-        ctrl-s horizontal direction splitw
-        ctrl-v vertical direction splitw
         alt-e subshell editor
         alt-enter open dirname file
         enter current open file
@@ -117,8 +115,13 @@ __split() {
             fi
             continue
         }
-        [[ -z $Pattern ]] || print_msg error "$item error, pattern is exists"
-        Pattern=$item
+        
+        { (($+o_custom[query])) || [[ -n $Pattern ]] } || {
+            Pattern=$item
+            continue
+        }
+        
+        print_msg error "$item error, pattern is exists"
     done
 }
 
@@ -143,8 +146,8 @@ main() {
         t: T: g: \
         H I d: m: -sort: \
         -help -args: \
-        -split -alias \
-        -query: -warm -popup -root-dir: -border-lines: \
+        -split -alias -popup \
+        -query: -warm  -root-dir: -border-lines: \
         -style: || exit 1
 
     (($+zopts[-t]))                     && o_types+=( --type=${^${(s/,/)^zopts[-t]}} )
@@ -172,20 +175,18 @@ main() {
 
     local file_rg file_fzf file_reload file_childid
     local Search_paths=() Search_dirs=() Pattern Results Root_dir
-    local fopts cmd exitcode  
+    local rmidx fopts cmd exitcode  
     local change_preview change_reload toggle_search initial_search
     
+    rmidx=${@[(i)--]}
+    ((rmidx < $#)) && o_args+=( "${@:$((rmidx+1))}" )
+    ((rmidx > 1))  && __split "${@:1:$((rmidx-1))}"
+
     file_rg=${TMP_DIR:-${TMP:-/tmp}}/fzf-rg-$$
     file_fzf=${TMP_DIR:-${TMP:-/tmp}}/fzf-fzf-$$
     file_reload=${TMP_DIR:-${TMP:-/tmp}}/fzf-reload-$$
     file_childid=${TMP_DIR:-${TMP:-/tmp}}/fzf-childid-$$
     trap "command rm -f $file_rg $file_fzf $file_reload" EXIT SIGINT SIGTERM
-
-    local rmidx=${@[(i)--]}
-
-    (($+o_custom[query]))   && Pattern=$o_custom[query] 
-    ((rmidx - 1 > 0))       && __split "${@:1:$((rmidx - 1))}"
-    ((rmidx + 1 <= $#))     && o_args+=( "${@:$((rmidx+1))}" )
 
     if (($+o_custom["root-dir"])); then
         Root_dir=$o_custom["root-dir"]
@@ -331,10 +332,9 @@ main() {
     "
     
     Results=$(: | FZF_DEFAULT_OPTS="$fopts" startup_fzf ${+o_custom[popup]+--popup})
-    exitcode=$?
 
-    if ((exitcode == 1)); then print_msg warn  "没有搜索到任何相关的文件";
-    elif ((exitcode == 2)); then print_msg warn "not match entries";
+    if ((exitcode == 1)); then print_msg warn  "not search any files";
+    elif ((exitcode == 2)); then print_msg warn "not match any files";
     elif ((exitcode == 130)); then :;
     else __handle_result;fi
     

@@ -1,106 +1,118 @@
 #!/bin/env zsh
 
-# 1. 能够解析常用的参数
-# 2. 接受目录或文件
-# 3. 尽可能地解释用户传入的参数(很完美，几乎完全避免了和文件名或模式冲突)
+setopt EXTENDED_GLOB
+setopt REMATCHPCRE
+setopt KSHGLOB
 
-REPORT_BIN=tools-report
+function print_msg () {
+    local tag context tcolor ccolor
 
-report_info() { $REPORT_BIN --indent --level "info" -- "$@" > /dev/tty }
-report_warn() { $REPORT_BIN --indent --level "warn" -- "$@" > /dev/tty }
-report_help() { $REPORT_BIN --level "help" -- "$@" > /dev/tty; exit 0 }
-report_error() { $REPORT_BIN --indent --level "error" -- "$@" 2> /dev/tty; exit 1 }
+    tag=$1 context=${@:2}
+    case $tag in 
+        info)   tcolor=blue ccolor=magenta ;;
+        warn)   tcolor=yellow ccolor=magenta ;;
+        error)  tcolor=red ccolor=magenta ;;
+        help)   tcolor=green ccolor=magenta ;;
+        *)      print -- "$@"; exit 0 ;;
+    esac
+    context="%B%S%F{$tcolor}$tag%b%s%f : %F{$ccolor}$context%f"
 
-help() {
-    local help_msg='usage: ff [OPTIONS] [DIRECTORIES or Files]
+    print -- "${(%):-$context}"    
+}
+
+function startup_fzf() {
+    if [[ $1 == --popup ]] && (($+commands[fzf-tmux])); then
+        fzf-tmux $FZF_TMUX_OPTS "${@:2}" <&0
+    else
+        fzf "$@"
+    fi
+}
+
+__help() {
+    local help_msg='\nusage: ff [OPTIONS] [DIRECTORIES or Files]
 
     OPTIONS:
         -g glob-based search
         -p full-path
         -t char set, file types dfxlspebc (-t t...)
-        -T string, changed after time ( 1min 1h 1d(default) 2weeks "2018-10-27 10:00:00" 2018-10-27)
         -d int, max-depth
         -H bool, --hidden
         -I bool, --no-ignore
-        -e extensions
-        -E exclude glob pattern
-        -o select + -O
-        -q Cancel the first n matching file names (Optional default 1)
-
-        --help 
-        --window full none
-        --split Explain the parameters passed in by the user as much as possible
+        -e extensions, Comma-separated
         --args pass -> fd
 
+        --query force initial query string
+        --popup start fzf-tmux
+        --root-dir relative path -> abs dir
+        --split Explain the parameters passed in by the user as much as possible, HhIig,exts
+        --alias use directory alias
+        
+        --help 
+
     KEYBINDINGS:
-        ctrl-s horizontal direction splitw
-        ctrl-v vertical direction splitw
         alt-e subshell editor
         alt-enter open dirname file
         enter current open file
     '
-    report_help "${(@f)help_msg}"
+    print_msg help "$help_msg"
+    exit 0
 }
 
 __split() {
-    ((DEBUG)) && set -x
-    local item idx
-    local match class context flags
+    local item 
+
     for item in "$@"; do 
-        { [[ -e $item ]] && ((o_q-- < 1)) } && {
-            [[ -d $item ]] && Directories+=$item || Files+=$item
+        { [[ -z $Root_dir && -e $item ]] || [[ -n $Root_dir && -e $Root_dir/$item ]] } && {
+            [[ -n $Root_dir ]] && item=$Root_dir/$item
+            [[ -d $item ]] && Search_dirs+=$item || Search_files+=$item
             continue
         }
-        ((o_split)) && [[ $item =~ '^([[:alpha:]]([[:punct:]]).*\2)+[[:alpha:]]*$'  ]] && {
-            flags=( ${(s//)item##*[[:punct:]]} )
-            while [[ $item =~ '^[[:alpha:]]([[:punct:]]).*?\1' ]]; do
-                class=$MATCH[1] context=$MATCH[3,-2] match=$MATCH 
-                case $class in 
-                    f) 
-                        while (($#context)); do 
-                            if [[ $context =~ ^h ]]; then
-                                ((idx=$o_args[(I)--hidden])) && unset "o_args[idx]" || o_args+=--hidden
-                            elif [[ $context =~ ^i ]]; then
-                                ((idx=$o_args[(I)--no-ignore])) && unset "o_args[idx]" || o_args+=--no-ignore
-                            elif [[ $context =~ ^g ]]; then
-                                ((idx=$o_args[(I)--glob])) && unset "o_args[idx]" || o_args+=--glob
-                            elif [[ $context =~ ^a ]]; then
-                                ((idx=$o_args[(I)--full-path])) && unset "o_args[idx]" || o_args+=--full-path
-                            elif [[ $context =~ ^[dfxlebcsp] ]]; then
-                                o_types+=$MATCH
-                            elif [[ $context =~ ^[[:digit:]]+ ]]; then
-                                unset "o_args[${o_args[(i)--max-depth*]}]"
-                                ((MATCH)) && o_args+="--max-depth=$MATCH"
-                            else
-                                report_error "class:$class" "$context" "内容错误"
-                            fi
-                            context=${context#$MATCH}
-                        done
-                        ;;
-                    t)
-                        local after before 
-                        ((flags[(I)r])) && {after=before; before=after;} || {after=after; before=before;}
-                        [[ $context =~ ^[^,]* && -n $MATCH ]] && o_args+="--changed-$after=$MATCH"
-                        context=${context#$MATCH}
-                        [[ $context =~ [^,]*$ && -n $MATCH ]] && o_args+="--changed-$before=$MATCH"
-                        ;;
-                    e)
-                        ((flags[(I)r])) && o_excludes+=( $(print -- \*.${^${(s/,/)context}}) ) || o_extensions+=( ${(s/,/)context} )
-                        ;;
-                    x|E)
-                        o_excludes+=( $(print -- ${^${(s/,/)context}}) )                        ;;
-                    *)
-                        report_error "class:$class" "类别错误"
-                        ;;
-                esac
-                item=${item#$match}
-            done
+
+        { (($+o_custom[alias])) && [[ $item == (#b):(*): ]] } && {
+            item=${${(f)"$(rualdi list-alias)"}[(r)$match[1] => *]#* => }
+            if [[ -n $item ]]; then
+                Root_dir=$item
+            else 
+                print_msg warn "directory mark is not exist" > /dev/tty
+            fi
             continue
         }
-        [[ -z $Pattern ]] || report_error "$item error, pattern is exists"
-        Pattern=$item
+
+        { (($+o_custom[split])) && [[ $item == (#b)?(<->[smhdwMy]),?(<->[smhdwMy]) ]] } && {
+            [[ -n $match[1] ]] && o_dynamic+="--changed-after=$match[1]"
+            [[ -n $match[2] ]] && o_dynamic+="--changed-before=$match[2]"
+            continue
+        }
+
+        { (($+o_custom[split])) && [[ $item =~ '^([dfxlspebchHiIg\d]+)?,+((?:[^,]+)(?:,+[^,]+)*)?,*$' ]] } && {
+            local flags=$match[1] extensions=$match[2]
+        
+            [[ $flags =~ h ]] && o_dynamic+="--no-hidden"
+            [[ $flags =~ H ]] && o_dynamic+="--hidden"
+            [[ $flags =~ i ]] && o_dynamic+="--ignore"
+            [[ $flags =~ I ]] && o_dynamic+="--no-ignore"
+            [[ $flags =~ g ]] && {
+                if git rev-parse --is-inside-work-tree; then 
+                    Root_dir="$(git rev-parse --show-toplevel)"
+                else
+                    print_msg warn "$PWD is not a valid repository"
+                fi
+            }
+            [[ $flags =~ '\d+' ]] && { ((MATCH)) && o_dynamic+="--max-depth=$MATCH" || o_dynamic+="--max-depth=99" }
+            
+            o_types+=${flags//[hHiIg[:digit:]]}
+
+            [[ -n $extensions ]] && o_extensions+=( ${(s/,/)extensions} )
+            continue
+        }
+        
+        { (($+o_custom[query])) || [[ -n $Pattern ]] } || {
+            Pattern=$item
+            continue
+        }
+        
+        print_msg error "$item error, pattern is exists"
     done
-    ((DEBUG)) && set +x
 }
 
 __handle_result() {
@@ -108,11 +120,7 @@ __handle_result() {
     trigger_key=${"${(@f)Results}"[1]}
     files=(${"${(@f)Results}"[2,-1]})
     
-    if [[ "alt-s" == $trigger_key ]]; then
-        tmux splitw -bv ${EDITOR} $files
-    elif [[ "alt-v" == $trigger_key ]]; then
-        tmux splitw -bh ${EDITOR} $files    
-    elif [[ "alt-enter" == $trigger_key ]]; then
+    if [[ "alt-enter" == $trigger_key ]]; then
         $EDITOR ${files[-1]:h} > /dev/tty < /dev/tty
     else
         $EDITOR $files > /dev/tty < /dev/tty
@@ -120,38 +128,47 @@ __handle_result() {
 }
 
 main() {
-    local o_q o_extensions=() o_types=() o_excludes=() o_window o_split o_output o_args=()
-    zparseopts -D -E -F -A zopts -- q:: g p t: T: d: H I u e: E: -window: -output -help -split -args: || exit 1
-    setopt extended_glob
-    setopt rematchpcre
-
-    (($+zopts[-g])) && o_args+="--glob"
-    (($+zopts[-p])) && o_args+="--full-path"
-    (($+zopts[-u])) && o_args+="-u"
-    (($+zopts[-H])) && o_args+="--hidden"
-    (($+zopts[-I])) && o_args+="--no-ignore"
-    (($+zopts[-d])) && o_args+="--max-depth=$zopts[-d]"
-    (($+zopts[-t])) && o_types+=( ${(s//)zopts[-t]} )
-    (($+zopts[-T])) && o_args+="--change-after=$zopts[-T]"
-    (($+zopts[-e])) && o_extensions+=( ${(s/,/)zopts[-e]} )
-    (($+zopts[-E])) && o_excludes+=( ${(s/,/)zopts[-E]} )
-    (($+zopts[-q])) && o_q=${zopts[-q]:-1}
+    local o_dynamic=() o_types o_extensions=() o_args=()
+    local -A o_custom
     
-    (($+zopts[--split]))  && o_split=1
-    (($+zopts[--output])) && o_output=1
-    (($+zopts[--window])) && o_window=$zopts[--window]
-    (($+zopts[--args]))   && o_args+=(${=zopts[--args]})
-    (($+zopts[--help]))   && help
+    zparseopts -D -E -F -A zopts -- \
+        g p t: d: H I e: \
+        -args: -help \
+        -root-dir: -query: \
+        -popup -split -alias || exit 1
 
-    local Directories=() Files=() Pattern Results
-    local fbin cmd fopts exitcode  
+    (($+zopts[-g]))         && o_args+="--glob"
+    (($+zopts[-p]))         && o_args+="--full-path"
+    (($+zopts[--args]))     && o_args+=( ${=zopts[--args]} )    
     
-    (($#)) && __split "$@"
+    (($+zopts[-H]))         && o_dynamic+="--hidden"
+    (($+zopts[-I]))         && o_dynamic+="--no-ignore"
+    (($+zopts[-d]))         && o_dynamic+="--max-depth=$zopts[-d]"
     
-    [[ $o_window == full ]] && fbin=(fzf-tmux -p100%,100%) || fbin=(fzf-tmux $FZF_TMUX_OPTS)
-    [[ $o_window == none ]] && fbin=
+    (($+zopts[-t]))         && o_types=$zopts[-t]
+    (($+zopts[-e]))         && o_extensions+=( ${(s/,/)zopts[-e]} )
 
-    cmd="command fd --color=always --follow $o_args"
+    (($+zopts[--query]))    && o_custom[query]=$zopts[--query]
+    (($+zopts[--root-dir])) && o_custom["root-dir"]=$zopts[--root-dir]
+    (($+zopts[--split]))    && o_custom[split]=
+    (($+zopts[--popup]))    && o_custom[popup]=
+    (($+zopts[--alias]))    && o_custom[alias]=
+    
+    (($+zopts[--help]))     && __help
+
+    local Search_dirs=() Search_files=() Root_dir Pattern Results
+    local rmidx fopts cmd exitcode
+
+    [[ -n $o_custom["root-dir"] ]] && Root_dir=$o_custom["root-dir"]
+    
+    rmidx=${@[(i)--]}
+    ((rmidx < $#)) && o_args+=( "${@:$((rmidx+1))}" )
+    ((rmidx > 1))  && __split "${@:1:$((rmidx-1))}"
+
+    { ! (($#Search_dirs)) && [[ -n $Root_dir ]] } && Search_dirs+=$Root_dir
+    
+    cmd="command fd --color=always --follow $o_args $o_dynamic "
+    print $cmd
 
     fopts="
     $FZF_DEFAULT_OPTS
@@ -159,26 +176,23 @@ main() {
     --exit-0
     --scheme path --exact --tiebreak \"length,end,chunk,index\"
     --delimiter / --nth -1,-2
-    --header-first --header=\"keybindings:: C-s, C-v, C-o, A-e, A-enter\"
-    --expect \"alt-s,alt-v,alt-o,alt-enter\"
+    --header-first --header=\"Keybindings:: enter, A-e, A-enter\"
+    --expect \"alt-enter\"
     --bind=\"alt-e:execute(${EDITOR} {+} > /dev/tty < /dev/tty)\"
-    --bind=\"alt-s:accept,alt-v:accept,alt-enter:accept,enter:accept\"
+    --bind=\"alt-enter:accept,enter:accept\"
     $FZF_CUSTOM_OPTS
     "
     
     Results=$( 
     { 
-        ((DEBUG)) && set -x
-        (($#Files)) && lscolors <<<${(F)Files}
-        (($#Directories || !$#Files)) && eval $cmd --type=${^o_types:-f} --extension=${^o_extensions} \"--exclude=${^o_excludes}\" \"${Pattern:-\^}\" $Directories
-        ((DEBUG)) && set +x
-    } | FZF_DEFAULT_OPTS=$fopts ${fbin:-fzf})
+        (($#Search_files)) && lscolors <<<${(F)Files}
+        (($#Search_dirs || $#Search_files == 0)) && eval $cmd --type=${(s//)^o_types:-f} --extension=${^o_extensions}  ${(qq)Pattern:-\^} ${(@qq)Search_dirs}
+    } | FZF_DEFAULT_OPTS="$fopts" startup_fzf ${+o_custom[popup]+--popup} )
     exitcode=$?
-
-    if ((exitcode == 1)); then report_warn  "没有搜索到任何相关的文件";
-    elif ((exitcode == 2)); then report_error;
-    elif ((exitcode == 130)); then :;
-    elif ((o_output)); then print $Results;
+    
+    if ((exitcode == 1)); then print_msg warn  "not search any files";
+    elif ((exitcode == 2)); then print_msg warn "not match files";
+    elif ((exitcode == 130)); then ;
     else __handle_result;fi
 
     return $exitcode
