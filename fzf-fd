@@ -31,7 +31,7 @@ __help() {
         -e extensions, Comma-separated
         --args pass -> fd
 
-        --query force initial query string
+        -q | --query force initial query string
         --popup start fzf-tmux
         --root-dir relative path -> abs dir
         --split Explain the parameters passed in by the user as much as possible, HhIig,exts
@@ -52,8 +52,8 @@ __split() {
     local item 
 
     for item in "$@"; do 
-        { [[ -z $Root_dir && -e $item ]] || [[ -n $Root_dir && -e $Root_dir/$item ]] } && {
-            [[ -n $Root_dir ]] && item=$Root_dir/$item
+        { [[ $item == /* && -e $item ]] || [[ -e $Root_dir/$item ]] } && {
+            [[ $item != /* ]] && item=$Root_dir/$item
             [[ -d $item ]] && Search_dirs+=$item || Search_files+=$item
             continue
         }
@@ -121,13 +121,13 @@ main() {
     local o_dynamic=() o_types o_extensions=() o_args=()
     local -A o_custom
 
-    local Search_dirs=() Search_files=() Root_dir Pattern Results
+    local Search_dirs=() Search_files=() Root_dir=$PWD Pattern Results
     local rmidx fopts cmd exitcode
     
     zparseopts -D -E -F -A zopts -- \
         g p t: d: H I e: \
         -args: -help \
-        -root-dir: -query: \
+        -root-dir: -query: -q: \
         -popup -split -alias || exit 1
 
     (($+zopts[-g]))         && o_args+="--glob"
@@ -148,13 +148,17 @@ main() {
     (($+zopts[--help]))     && __help
 
     (($+zopts[--query]))    && Pattern=$zopts[--query]
+    (($+zopts[-q]))         && Pattern=$zopts[-q]
     (($+zopts[--root-dir])) && Root_dir=$zopts[--root-dir]
 
     rmidx=${@[(i)--]}
     ((rmidx < $#)) && o_args+=( "${@:$((rmidx+1))}" )
     ((rmidx > 1))  && __split "${@:1:$((rmidx-1))}"
 
-    { ! (($#Search_dirs)) && [[ -n $Root_dir ]] } && Search_dirs+=$Root_dir
+    # regular paths
+    (($#Search_dirs == 0 && $#Search_files == 0)) && Search_dirs+=$Root_dir
+    Search_files=( ${${Search_files/#$PWD\/}} )
+    Search_dirs=( ${${Search_dirs/#$PWD(\/|(#e))}:#} )
     
     cmd="command fd --color=always --follow $o_args $o_dynamic "
 
