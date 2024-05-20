@@ -114,7 +114,7 @@ __handle_result() {
 }
 
 main() {
-    local static_opts=() iglob=() type=() sort=(sortr none accessed)
+    local static_opts=() iglob=() type=() sort=(sortr none modified)
     local -A zopts extend_opts dynamic_opts
 
     local file_rg file_fzf file_reload file_childid
