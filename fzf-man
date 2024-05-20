@@ -28,12 +28,12 @@ function help() {
 local zopts
 local fopts result exitcode
 
-zparseopts -D -E -F -A zopts -- -flush s -popup -help || {
+zparseopts -D -E -F -A zopts -- h -popup -help || {
     print_msg error "parse error"
     exit 1
 }
 
-(($+zopts[--help])) && help
+(($+zopts[--help] || $+zopts[-h])) && help
 
 fopts="
 $FZF_DEFAULT_OPTS

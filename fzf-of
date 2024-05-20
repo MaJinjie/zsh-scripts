@@ -63,18 +63,18 @@ local zopts
 local fopts results exitcode
 local file_flush
 
-zparseopts -D -E -F -A zopts -- -flush s -popup -help || {
+zparseopts -D -E -F -A zopts -- -flush s h -popup -help || {
     print_msg error "parse error"
     exit 1
 }
-
-(($+zopts[--help])) && help
 
 file_flush=${TMP_DIR:-${TMP:-/tmp}}/fzf-nvim-oldfiles
 
 if (($+zopts[-s] || $+zopts[--flush])) || [[ ! -e $file_flush ]]; then
     flush_oldfiles
 fi
+
+(($+zopts[--help] || $+zopts[-h])) && help
 
 fopts="
 $FZF_DEFAULT_OPTS
