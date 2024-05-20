@@ -1,0 +1,99 @@
+#!/usr/bin/env zsh
+
+setopt EXTENDED_GLOB
+setopt REMATCHPCRE
+
+INSTALL_PATH=${${(M)${(%):-%N}:#/*}:-${0:A}}
+
+function print_msg () { ${0:h}/functions/print_msg "$@" }
+
+function startup_fzf() {
+    if [[ $1 == --popup ]] && (($+commands[fzf-tmux])); then
+        fzf-tmux $FZF_TMUX_OPTS "${@:2}"
+    else
+        fzf "$@"
+    fi
+}
+
+function help() {
+    local help_msg='\nusage: program_name [OPTIONS] [init-query]
+
+    OPTIONS:
+        --flush | -s flush oldfiles
+        --popup start fzf-tmux
+        --help 
+    KEYBINDINGS:
+        alt-e subshell editor
+        alt-enter open dirname file
+        enter current open file
+    '
+    print_msg help "$help_msg"
+    exit 0
+}
+
+function flush_oldfiles() {
+    local valid_files=()
+    
+    nvim --headless -c "call append(0, v:oldfiles)" \
+        -c "write! $file_flush" \
+        -c exit 1> /dev/null 2>&1
+
+    while read -r file; do
+        if [[ -e $file ]]; then
+            valid_files+=$file
+        fi
+    done <$file_flush
+
+    print -r -- ${(F)valid_files} > $file_flush
+}
+
+function handler() {
+    local trigger_key files
+    trigger_key=${"${(@f)Results}"[1]}
+    files=(${"${(@f)Results}"[2,-1]})
+    
+    if [[ "alt-enter" == $trigger_key ]]; then
+        $EDITOR ${files[-1]:h} > /dev/tty < /dev/tty
+    else
+        $EDITOR $files > /dev/tty < /dev/tty
+    fi
+}
+
+local zopts
+local fopts results exitcode
+local file_flush
+
+zparseopts -D -E -F -A zopts -- -flush s -popup -help || {
+    print_msg error "parse error"
+    exit 1
+}
+
+(($+zopts[--help])) && help
+
+file_flush=${TMP_DIR:-${TMP:-/tmp}}/fzf-nvim-oldfiles
+
+if (($+zopts[-s] || $+zopts[--flush])) || [[ ! -e $file_flush ]]; then
+    flush_oldfiles
+fi
+
+fopts="
+$FZF_DEFAULT_OPTS
+--query '$@'
+--prompt 'Oldfiles> '
+--scheme history
+--delimiter / --nth '-1,-2'
+-1 
+--header-first --header 'Keybindings:: enter, A-e, A-enter'
+--expect 'alt-enter'
+--bind 'alt-e:execute(${EDITOR} {+} > /dev/tty < /dev/tty)'
+--bind 'alt-enter:accept,enter:accept'
+$FZF_CUSTOM_OPTS
+"
+
+results=$(cat $file_flush | lscolors | startup_fzf ${+zopts[--popup]+--popup} )
+exitcode=$?
+
+if ((exitcode == 1)); then print_msg warn  "not search any files";
+elif ((exitcode == 2)); then print_msg warn "not match files";
+elif ((exitcode == 130)); then ;
+else handler;fi
