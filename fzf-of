@@ -90,7 +90,7 @@ $FZF_DEFAULT_OPTS
 $FZF_CUSTOM_OPTS
 "
 
-results=$(cat $file_flush | lscolors | startup_fzf ${+zopts[--popup]+--popup} )
+results=$(cat $file_flush | lscolors | FZF_DEFAULT_OPTS="$fopts" startup_fzf ${+zopts[--popup]+--popup} )
 exitcode=$?
 
 if ((exitcode == 1)); then print_msg warn  "not search any files";
