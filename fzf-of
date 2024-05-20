@@ -5,7 +5,7 @@ setopt REMATCHPCRE
 
 INSTALL_PATH=${${(M)${(%):-%N}:#/*}:-${0:A}}
 
-function print_msg () { ${0:h}/functions/print_msg "$@" }
+function print_msg () { ${INSTALL_PATH:h}/functions/print_msg "$@" }
 
 function startup_fzf() {
     if [[ $1 == --popup ]] && (($+commands[fzf-tmux])); then

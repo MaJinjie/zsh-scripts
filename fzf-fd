@@ -16,7 +16,7 @@ function startup_fzf() {
     fi
 }
 
-__help() {
+help() {
     local help_msg='\nusage: ff [OPTIONS] [DIRECTORIES or Files]
 
     OPTIONS:
@@ -46,7 +46,7 @@ __help() {
     exit 0
 }
 
-__split() {
+parse_cmdline() {
     local item 
 
     for item in "$@"; do 

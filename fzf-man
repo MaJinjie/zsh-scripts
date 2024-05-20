@@ -1,0 +1,54 @@
+#!/bin/env zsh
+
+INSTALL_PATH=${${(M)${(%):-%N}:#/*}:-${0:A}}
+
+function print_msg () { ${INSTALL_PATH:h}/functions/print_msg "$@" }
+
+function startup_fzf() {
+    if [[ $1 == --popup ]] && (($+commands[fzf-tmux])); then
+        fzf-tmux $FZF_TMUX_OPTS "${@:2}"
+    else
+        fzf "$@"
+    fi
+}
+
+function help() {
+    local help_msg='\nusage: program_name [OPTIONS] [init-query]
+
+    OPTIONS:
+        --popup start fzf-tmux
+        --help 
+    KEYBINDINGS:
+        enter current man
+    '
+    print_msg help "$help_msg"
+    exit 0
+}
+
+local zopts
+local fopts result exitcode
+
+zparseopts -D -E -F -A zopts -- -flush s -popup -help || {
+    print_msg error "parse error"
+    exit 1
+}
+
+(($+zopts[--help])) && help
+
+fopts="
+$FZF_DEFAULT_OPTS
++m 
+--prompt ' Man> '
+--query '$@'
+--nth 1
+--select-1 --exit-0
+$FZF_CUSTOM_OPTS
+"
+
+result=$(man -k . | FZF_DEFAULT_OPTS="$fopts" startup_fzf ${+zopts[--popup]+--popup} )
+exitcode=$?
+
+if ((exitcode == 1)); then print_msg warn "not search any man";
+elif ((exitcode == 130)); then :;
+else man ${${=result}[1]} | $EDITOR -c 'Man!' ;fi
+
