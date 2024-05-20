@@ -6,9 +6,7 @@ setopt KSHGLOB
 
 INSTALL_PATH=${${(M)${(%):-%N}:#/*}:-${0:A}}
 
-function print_msg () {
-    ${INSTALL_PATH:h}/functions/print_msg "$@"
-}
+function print_msg () { ${INSTALL_PATH:h}/functions/print_msg "$@" }
 
 function startup_fzf() {
     if [[ $1 == --popup ]] && (($+commands[fzf-tmux])); then
@@ -77,26 +75,28 @@ __split() {
         { (($+extend_opts[--split])) && [[ $item =~ '^([dfxlspebchHiIg\d]+)?,+((?:[^,]+)(?:,+[^,]+)*)?,*$' ]] } && {
             local flags=$match[1] extensions=$match[2]
         
-            [[ $flags =~ h ]] && unset 'dynamic_opts[--hidden]'
-            [[ $flags =~ H ]] && dynamic_opts[--hidden]=
-            [[ $flags =~ i ]] && unset 'dynamic_opts[--no-ignore]'
-            [[ $flags =~ I ]] && dynamic_opts[--no-ignore]=
-            [[ $flags =~ g ]] && {
-                if git rev-parse --is-inside-work-tree; then 
-                    Root_dir="$(git rev-parse --show-toplevel)"
-                else
-                    print_msg warn "$PWD is not a valid repository"
-                fi
+            [[ -n $flags ]] && {
+                [[ $flags =~ h ]] && unset 'dynamic_opts[--hidden]'
+                [[ $flags =~ H ]] && dynamic_opts[--hidden]=
+                [[ $flags =~ i ]] && unset 'dynamic_opts[--no-ignore]'
+                [[ $flags =~ I ]] && dynamic_opts[--no-ignore]=
+                [[ $flags =~ g ]] && {
+                    if git rev-parse --is-inside-work-tree; then 
+                        Root_dir="$(git rev-parse --show-toplevel)"
+                    else
+                        print_msg warn "$PWD is not a valid repository"
+                    fi
+                }
+                [[ $flags =~ '\d+' ]] && { ((MATCH)) && dynamic_opts[--max-depth]=$MATCH || unset 'dynamic_opts[--max-depth]' }
+                
+                extend_opts[--type]+=${flags//[hHiIg[:digit:]]}
             }
-            [[ $flags =~ '\d+' ]] && { ((MATCH)) && dynamic_opts[--max-depth]=$MATCH || unset 'dynamic_opts[--max-depth]' }
-            
-            extend_opts[--type]+=${flags//[hHiIg[:digit:]]}
 
             [[ -n $extensions ]] && extend_opts[--extensions]+=,$extensions
             continue
         }
         
-        { (($+extend_opts[--query])) || [[ -n $Pattern ]] } || {
+        { (($+extend_opts[-q])) || [[ -n $Pattern ]] } || {
             Pattern=$item
             continue
         }
@@ -105,7 +105,7 @@ __split() {
     done
 }
 
-__handle_result() {
+handler() {
     local trigger_key files
     trigger_key=${"${(@f)Results}"[1]}
     files=(${"${(@f)Results}"[2,-1]})
@@ -121,16 +121,16 @@ main() {
     local static_opts=()
     local -A zopts extend_opts dynamic_opts
 
-    local Search_dirs=() Search_files=() Root_dir=$PWD Pattern Results
+    local Search_dirs=() Search_files=() Results Pattern Root_dir=$PWD
     local rmidx fopts cmd exitcode
     
     zparseopts -D -E -F -A zopts -- \
         g p t: d: H I e: \
         -args: -help \
-        -root-dir: -query: -q: \
-        -popup -split -alias || exit 1
+        -root-dir: r q: \
+        -popup -split -alias -output || exit 1
     
-    (($+zopts[--help]))     && __help
+    (($+zopts[--help]))     && help
 
     (($+zopts[-g]))         && static_opts+="--glob"
     (($+zopts[-p]))         && static_opts+="--full-path"
@@ -145,14 +145,15 @@ main() {
     (($+zopts[--split]))    && extend_opts[--split]=
     (($+zopts[--popup]))    && extend_opts[--popup]=
     (($+zopts[--alias]))    && extend_opts[--alias]=
+    (($+zopts[--output]))    && extend_opts[--output]=
 
-    (($+zopts[--query]))    && Pattern=$zopts[--query]
     (($+zopts[-q]))         && Pattern=$zopts[-q]
+    (($+zopts[-r]))         && Root_dir=$zopts[-r]
     (($+zopts[--root-dir])) && Root_dir=$zopts[--root-dir]
 
     rmidx=${@[(i)--]}
     ((rmidx < $#)) && static_opts+=( "${@:$((rmidx+1))}" )
-    ((rmidx > 1))  && __split "${@:1:$((rmidx-1))}"
+    ((rmidx > 1))  && parse_cmdline "${@:1:$((rmidx-1))}"
 
     # regular paths
     (($#Search_dirs == 0 && $#Search_files == 0)) && Search_dirs+=$Root_dir
@@ -182,10 +183,11 @@ main() {
     } | FZF_DEFAULT_OPTS="$fopts" startup_fzf ${+extend_opts[--popup]+--popup} )
     exitcode=$?
     
-    if ((exitcode == 1)); then print_msg warn  "(cmd:$cmd)not search any files";
-    elif ((exitcode == 2)); then print_msg warn "($cmd)not match files";
+    if ((exitcode == 1)); then print_msg warn  "(cmd:$cmd | pattern:$Pattern)not search any files";
+    elif ((exitcode == 2)); then print_msg warn "(cmd:$cmd | pattern:$Pattern) not match files";
     elif ((exitcode == 130)); then ;
-    else __handle_result;fi
+    elif (($+extend_opts[--output])); then sed -n '1!p' <<<$Results ;
+    else handler;fi
 
     return $exitcode
 }

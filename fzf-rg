@@ -1,33 +1,25 @@
 #!/bin/env zsh
 
-# 匹配的文件数
-
-# 1. 能够解析常用的参数
-# 2. 接受目录或文件
-# 3. 能够在fzf过滤时，解释--iglob --hidden --no-hidden --no-ignore --ignore --max-depth --type subdir
-# 4. In the commandline, 尽可能解释用户传入的参数
-
 setopt EXTENDED_GLOB
 setopt REMATCHPCRE
 
-0=${${(M)${(%):-%N}:#/*}:-$PWD/$0}
+INSTALL_PATH=${${(M)${(%):-%N}:#/*}:-${0:A}}
 
 function print_msg () { ${0:h}/functions/print_msg "$@" }
 
 function startup_fzf() {
     if [[ $1 == --popup ]] && (($+commands[fzf-tmux])); then
-        fzf-tmux $FZF_TMUX_OPTS "${@:2}" <&0
+        fzf-tmux $FZF_TMUX_OPTS "${@:2}"
     else
         fzf "$@"
     fi
 }
 
-__help() {
+help() {
     local help_msg='\nusage: ss [OPTIONS] [pattern] [DIRECTORIES or Files]
 
     OPTIONS:
         -t file types,  Comma-separated
-        -T file types(not),  Comma-separated
         -g iglob pattern,  Comma-separated
         
         -H bool --hidden
@@ -37,16 +29,13 @@ __help() {
         --sort format (sort|sortr):default:toggle_val
         --args pass -> rg
 
-        --query force initial query string
+        -q force initial query string
         --warm warm-cache when initial querystring is empty
         --popup start fzf-tmux
         --split Explain the parameters passed in by the user as much as possible
         --alias use directory alias
 
-        --border-lines border lines
-        --root-dir filter base dir
-        --style opetional: init-query, ltrim, space-trigger
-
+        --root-dir | -r filter base dir
         --help 
     KEYBINDINGS:
         alt-e subshell editor
@@ -60,49 +49,47 @@ __help() {
 __split() {
     local item
     for item in "$@"; do 
-        { [[ -z $o_custom["root-dir"] && -e $item ]] || [[ -n $o_custom["root-dir"] && -e $o_custom["root-dir"]/$item ]] } && {
-            [[ -n $o_custom["root-dir"] ]] && item=$o_custom/$item
+        { [[ $item == /* && -e $item ]] || [[ -e $Root_dir/$item ]] } && {
+            [[ $item != /* ]] && item=$Root_dir/$item
             Search_paths+=$item
-            [[ -d $item ]] && Search_dirs+=$item
             continue
         }
-        { (($+o_custom[alias])) && [[ $item == (#b):(*): ]] } && {
+        
+        { (($+extend_opts[--alias])) && [[ $item == (#b):(*): ]] } && {
             item=${${(f)"$(rualdi list-alias)"}[(r)$match[1] => *]#* => }
-            [[ -n $item ]] && {
-                Search_paths+=$item
-                Search_dirs+=$item
-            }
-            continue
-        }
-        { (($+o_custom[split])) && [[ $item =~ '^([hHiIsSoOge\d]+)?,+((?:[^,]+)(?:,+[^,]+)*)?,*$' && -n $MATCH ]] } && {
-            local idx flags=$match[1] types=$match[2]
-            [[ -n $flags ]] && {
-                [[ $flags =~ h ]] && o_dynamic+="--no-hidden"
-                [[ $flags =~ H ]] && o_dynamic+="--hidden"
-                [[ $flags =~ i ]] && o_dynamic+="--ignore"
-                [[ $flags =~ I ]] && o_dynamic+="--no-ignore"
-                [[ $flags =~ s ]] && o_dynamic+="--$o_sort[1]=$o_sort[3]"
-                [[ $flags =~ S ]] && o_dynamic+="--$o_sort[1]=$o_sort[2]"
-                [[ $flags =~ o ]] && o_dynamic+="--max-count=1"
-                [[ $flags =~ O ]] && while ((idx=$o_dynamic[(I)--max-count*])); do unset "o_dynamic[idx]"; done
-                [[ $flags =~ g ]] && {
-                    if git rev-parse --is-inside-work-tree; then 
-                        Search_dirs+="$(git rev-parse --show-toplevel)"
-                    else
-                        print_msg warn "$PWD is not a valid repository"
-                    fi
-                }
-                [[ $flags =~ '\d+' ]] && { ((MATCH)) && o_dynamic+="--max-depth=$MATCH" || o_dynamic+="--max-depth=99" }
-            }
-            [[ -n $types ]] && if [[ $flags =~ e ]]; then 
-                o_iglobs+=( '--iglob=*.'${^${(s/,/)types}} )
-            else
-                o_types+=( --type=${^${(s/,/)types}} )
+            if [[ -n $item ]]; then
+                Root_dir=$item
+            else 
+                print_msg warn "directory mark is not exist" > /dev/tty
             fi
             continue
         }
         
-        { (($+o_custom[query])) || [[ -n $Pattern ]] } || {
+        { (($+extend_opts[--split])) && [[ $item =~ '^([hHiIsSoOg\d]+)?,+((?:\w+)(?:,+\w+)*)?,*$' ]] } && {
+            local flags=$match[1] types=$match[2]
+            [[ -n $flags ]] && {
+                [[ $flags =~ H ]] && unset 'dynamic_opts[--hidden]'
+                [[ $flags =~ h ]] && dynamic_opts[--hidden]=
+                [[ $flags =~ I ]] && unset 'dynamic_opts[--no-ignore]'
+                [[ $flags =~ i ]] && dynamic_opts[--no-ignore]=
+                [[ $flags =~ S ]] && dynamic_opts[--${sort[1]}]=$sort[2]
+                [[ $flags =~ s ]] && dynamic_opts[--${sort[1]}]=$sort[3]
+                [[ $flags =~ O ]] && unset 'dynamic_opts[--max-count]'
+                [[ $flags =~ o ]] && dynamic_opts[--max-count]=1
+                [[ $flags =~ g ]] && {
+                    if git rev-parse --is-inside-work-tree; then 
+                        Root_dir="$(git rev-parse --show-toplevel)"
+                    else
+                        print_msg warn "$PWD is not a valid repository"
+                    fi
+                }
+                [[ $flags =~ '\d+' ]] && { ((MATCH)) && dynamic_opts[--max-depth]=$MATCH || unset 'dynamic_opts[--max-depth]' }
+            }
+            [[ -n $types ]] && type+=( ${(s/,/)types} )
+            continue
+        }
+        
+        { (($+extend_opts[-q])) || [[ -n $Pattern ]] } || {
             Pattern=$item
             continue
         }
@@ -125,190 +112,178 @@ __handle_result() {
 }
 
 main() {
-    local o_types=() o_dynamic=() o_iglobs=() o_args=() o_sort=() 
-    local -A o_custom=()
-    
-    zparseopts -D -E -F -A zopts -- \
-        t: T: g: \
-        H I d: m: -sort: \
-        -help -args: \
-        -split -alias -popup \
-        -query: -warm  -root-dir: -border-lines: \
-        -style: || exit 1
-
-    (($+zopts[-t]))                     && o_types+=( --type=${^${(s/,/)^zopts[-t]}} )
-    (($+zopts[-T]))                     && o_types+=( --type-not=${^${(s/,/)^zopts[-T]}} )
-    (($+zopts[-g]))                     && o_iglobs+=( --iglob=${^${(s/,/)zopts[-g]}} )
-    
-    (($+zopts[-H]))                     && o_dynamic+="--hidden"
-    (($+zopts[-I]))                     && o_dynamic+="--no-ignore"
-    (($+zopts[-d]))                     && o_dynamic+="--max-depth=$zopts[-d]"
-    (($+zopts[-m]))                     && o_dynamic+="--max-count=$zopts[-m]"
-    (($+zopts[--sort]))                 && { o_sort=( ${(s/:/)zopts[--sort]} ); o_dynamic+="--$o_sort[1]=$o_sort[2]" }
-    
-    (($+zopts[--args]))                 && o_args+=( "${(@)=zopts[--args]}" )
-    (($+zopts[--help]))                 && __help
-
-    (($+zopts[--split]))                && o_custom[split]=
-    (($+zopts[--alias]))                && o_custom[alias]=
-    
-    (($+zopts[--warm]))                 && o_custom[warm]=
-    (($+zopts[--popup]))                && o_custom[popup]=
-    (($+zopts[--root-dir]))             && o_custom["root-dir"]=$zopts[--root-dir]
-    (($+zopts[--border-lines]))         && o_custom["border-lines"]=$zopts[--border-lines]
-    (($+zopts[--query]))                && o_custom[query]=$zopts[--query]
-    (($+zopts[--style]))                && o_custom[style]=$zopts[--style]
+    local static_opts=() iglob=() type=() sort=(sortr none accessed)
+    local -A zopts extend_opts dynamic_opts
 
     local file_rg file_fzf file_reload file_childid
-    local Search_paths=() Search_dirs=() Pattern Results Root_dir
+    local Search_paths=() Results Pattern Root_dir=$PWD
     local rmidx fopts cmd exitcode  
     local change_preview change_reload toggle_search initial_search
-    
-    rmidx=${@[(i)--]}
-    ((rmidx < $#)) && o_args+=( "${@:$((rmidx+1))}" )
-    ((rmidx > 1))  && __split "${@:1:$((rmidx-1))}"
 
+    zparseopts -D -E -F -A zopts -- \
+        t: g: \
+        H I d: m: -sort: \
+        -help -args: \
+        -split -alias -popup -warm \
+        q -root-dir: r \
+        || exit 1
+
+    (($+zopts[--help]))                 && help
+    
+    (($+zopts[--args]))                 && static_opts+=( ${=zopts[--args]} )    
+    
+    (($+zopts[-H]))                     && dynamic_opts[--hidden]=
+    (($+zopts[-I]))                     && dynamic_opts[--no-ignore]=
+    (($+zopts[-d]))                     && dynamic_opts[--max-depth]=$zopts[-d]
+    (($+zopts[-m]))                     && dynamic_opts[--max-count]=$zopts[-m]
+    (($+zopts[--sort]))                 && sort=( ${(s/,/)zopts[--sort]} )
+
+    (($+zopts[-t]))                     && type+=( ${(s/,/)zopts[-t]} )
+    (($+zopts[-g]))                     && iglob+=( ${(s/,/)zopts[-g]} )
+    (($+zopts[--split]))                && extend_opts[--split]=
+    (($+zopts[--alias]))                && extend_opts[--alias]=
+    (($+zopts[--warm]))                 && extend_opts[--warm]=
+    (($+zopts[--popup]))                && extend_opts[--popup]=
+
+    (($+zopts[-q]))                     && Pattern=$zopts[-q]
+    (($+zopts[-r]))                     && Root_dir=$zopts[-r]
+    (($+zopts[--root-dir]))             && Root_dir=$zopts[--root-dir]
+
+    # default
+    dynamic_opts[--${sort[1]}]=$sort[2]
+
+    # split args
+    rmidx=${@[(i)--]}
+    ((rmidx < $#)) && static_opts+=( "${@:$((rmidx+1))}" )
+    ((rmidx > 1))  && parse_cmdline "${@:1:$((rmidx-1))}"
+    
+    # regular paths
+    (($#Search_paths == 0)) && Search_paths+=$Root_dir
+    Search_paths=( ${${Search_paths/#$PWD(\/|(#e))}:#} )
+
+    # file touch
     file_rg=${TMP_DIR:-${TMP:-/tmp}}/fzf-rg-$$
     file_fzf=${TMP_DIR:-${TMP:-/tmp}}/fzf-fzf-$$
     file_reload=${TMP_DIR:-${TMP:-/tmp}}/fzf-reload-$$
     file_childid=${TMP_DIR:-${TMP:-/tmp}}/fzf-childid-$$
-    trap "command rm -f $file_rg $file_fzf $file_reload" EXIT SIGINT SIGTERM
+    trap "command rm -f $file_rg $file_fzf $file_reload $file_childid" EXIT SIGINT SIGTERM
 
-    if (($+o_custom["root-dir"])); then
-        Root_dir=$o_custom["root-dir"]
-        (($#Search_dirs == 0)) && Search_paths+=$Root_dir 
-    elif [[ $#Search_dirs == 1 && $Search_dirs[1] == /* ]]; then
-        Root_dir=$Search_dirs[1]
-    elif [[ -z ${(M)Search_dirs:#/*} ]]; then
-        Root_dir=$PWD
+    # cmd 
+    cmd="command rg --line-number --with-filename --no-heading --color=always --smart-case ${(@qq)static_opts}"
+
+    initial_search="
+    local warm file_childid cmd search_paths
+    warm=${+extend_opts[--warm]} file_childid=$file_childid
+    cmd=\\\"$cmd ${type:+--type=${(@)^type}} ${iglob:+--iglob=${(@qq)^iglob}}\\\" search_paths=( ${(@qq)Search_paths} )
+    "'
+    if [[ -n {q} ]]; then
+        print -r -- \"reload($cmd -- \{q} ${(@qq)search_paths})\"
     else
-        Root_dir=
-    fi
-
-    cmd="command rg --line-number --with-filename --no-heading --color=always --smart-case $o_args"
-    
-    change_reload="
-    setopt EXTENDED_GLOB
-    setopt REMATCHPCRE
-    local dynamic=( ${(@qq)o_dynamic} ) types=( ${(@qq)o_types} ) iglobs=( ${(@qq)o_iglobs} ) search_paths=()
-    local prefix_string suffix_string reload_string 
-
-    if [[ \$FZF_QUERY == *--* ]]; then
-        prefix_string=\${FZF_QUERY%--*}
-        suffix_string=\${FZF_QUERY##*--}
-    else
-        prefix_string=\${FZF_QUERY}
-    fi
-    prefix_string=\${prefix_string%%[[:blank:]]#}
-    ((${o_custom[style][(Iws/,/)ltrim]}))              && prefix_string=\${prefix_string##[[:blank:]]#} 
-    ((${o_custom[style][(Iws/,/)space-trigger]}))      && suffix_string=\${suffix_string%%[^[:blank:]]#}
-
-    # parse suffix_string
-    local item idx flags ltypes
-    for item in \${=suffix_string}; do 
-        if [[ \$item =~ '/$' ]]; then
-            if [[ \$item == /* || -z $Root_dir ]]; then 
-                search_paths+=\$item
-            else
-                if [[ $Root_dir == $PWD ]]; then
-                    search_paths+=\$item
-                else
-                    search_paths+=$Root_dir/\$item
-                fi
-            fi
-        elif [[ \$item =~ '^([hHiIsSoOge[:digit:]]+)?,+((?:[^,]+)(?:,+[^,]+)*)?,*$' ]]; then 
-            flags=\$match[1] ltypes=\$match[2]
-            
-            [[ \$flags =~ H ]] && dynamic+='--hidden'
-            [[ \$flags =~ h ]] && dynamic+='--no-hidden'
-            [[ \$flags =~ I ]] && dynamic+='--no-ignore'
-            [[ \$flags =~ i ]] && dynamic+='--ignore'
-            [[ \$flags =~ s ]] && dynamic+='--$o_sort[1]=$o_sort[3]'
-            [[ \$flags =~ S ]] && dynamic+='--$o_sort[1]=$o_sort[2]'
-            [[ \$flags =~ o ]] && dynamic+='--max-count=1'
-            [[ \$flags =~ O ]] && while ((idx=\$dynamic[(I)--max-count*])); do unset 'o_dynamic[idx]'; done
-            [[ \$flags =~ [[:digit:]]+ ]] && { ((MATCH)) && dynamic+=--max-depth=\$MATCH || dynamic+=--max-depth=99 }
-
-            
-            [[ -n \$ltypes ]] && if [[ \$flags =~ e ]]; then 
-                iglobs+=( '--iglob=*.'\${^\${(s/,/)ltypes}} )
-            else
-                types+=( --type=\${^\${(s/,/)ltypes}} )
-            fi
-            
+        if ((warm)); then
+            local random_str=$(cat /dev/urandom | tr -cd \"[:lower:]\" | head -c 4)
+            print -r -- \"execute-silent:$cmd -- $random_str $search_paths &; print \\\$! > $file_childid\"
         else
-            iglobs+=--iglob=\$item
+            print -r -- \"ignore\"
         fi
-    done
-    
-    ((\$#search_paths)) || search_paths=( ${(@qq)Search_paths} )
-    [[ -e $file_reload ]] || touch $file_reload
-    
-    reload_string=\\\"reload($cmd \${(@qqu)dynamic} \${(@qqu)types} \${(@qqu)iglobs} -- '\$prefix_string' \${(@qq)search_paths} || true )\\\"
-
-    if [[ -z \{q} ]] && ! ((${o_custom[style][(Iws/,/)init-query]})); then
-        print -r -- \\\"reload(:)\\\"
-    elif [[ \$reload_string == \$(<$file_reload) ]]; then 
-        print -r -- \\\"ignore\\\"
-    else
-        [[ -s $file_childid ]] && { kill \$(<$file_childid) &> /dev/null; echo -n > $file_childid }
-        print -r -- \$reload_string | tee $file_reload
     fi
-    "
+    '
     
-    change_preview="
-    local lines=\$((FZF_LINES - ${o_custom['border-lines']:-3}))  match_count=\$FZF_MATCH_COUNT preview_lines=\$FZF_PREVIEW_LINES
+    toggle_search="
+    local file_fzf=$file_fzf file_rg=$file_rg
+    "'if [[ ! $FZF_PROMPT =~ Rg ]]; then
+        print \"rebind(change)+change-prompt(Rg> )+disable-search+transform-query:print -r {q} > $file_fzf; cat $file_rg\"
+    else
+        print \"unbind(change)+change-prompt(Fzf> )+enable-search+transform-query:print -r {q} > $file_rg; cat $file_fzf\"
+    fi
+    '
+
+    change_preview='
+    local lines=$((FZF_LINES - 3))  match_count=$FZF_MATCH_COUNT preview_lines=$FZF_PREVIEW_LINES
     typeset b1=10000 b2=1000 b3=100 per1=0 per2=30 per3=60 result
     
     if ((match_count == 0 || match_count > b1)); then
         result=0
     elif ((match_count > b2)); then
-        result=\$(( ((b1 - match_count) * (per2 - per1) / (b1 - b2)  + per1) * lines / 100 ))
+        result=$(( ((b1 - match_count) * (per2 - per1) / (b1 - b2)  + per1) * lines / 100 ))
     elif ((match_count > b3)); then
-        result=\$(( ((b2 - match_count) * (per3 - per2) / (b2 - b3)  + per2) * lines / 100 ))
+        result=$(( ((b2 - match_count) * (per3 - per2) / (b2 - b3)  + per2) * lines / 100 ))
     elif ((match_count > (100 - per3) * lines / 100)); then
-        result=\$(( per3 * lines / 100 ))
+        result=$(( per3 * lines / 100 ))
     else
-        result=$\((lines - match_count))
+        result=$((lines - match_count))
     fi
+    print -- \"change-preview-window($result)\"
+    '
 
-    print \\\"change-preview-window(\$result)\\\"
-    "
+    change_reload="
+    setopt EXTENDED_GLOB
+    setopt REMATCHPCRE
+    
+    local -A dynamic_opts
+    local cmd sort type iglob search_paths 
+    local root_dir 
+    local file_reload file_childid
 
-    toggle_search="
-    if [[ ! \$FZF_PROMPT =~ Rg ]]; then
-        print \\\"rebind(change)+change-prompt(Rg> )+disable-search+transform-query:print -r \\\{q} > $file_fzf; cat $file_rg\\\"
+    file_reload=$file_reload file_childid=$file_childid
+    dynamic_opts=( ${(@qqkv)dynamic_opts} ) 
+    cmd='$cmd' sort=( $sort ) type=( $type ) iglob=( ${(@qq)iglob} ) search_paths=( ${(@qq)Search_paths} )  
+    root_dir=$Root_dir
+    "'
+    local prefix_string suffix_string fzf_array
+    [[ {q} =~ ^(?:[[:blank:]]*(.*?)[[:blank:]]*)(?:-|--[[:blank:]]*(.*?)[^[:blank:]]*)?$ ]]
+    prefix_string=$match[1] suffix_string=$match[2] fzf_array=( $prefix_string ${(ou)=suffix_string} )
+
+    if [[ -z $prefix_string ]]; then
+        print -r -- \"reload(:)\"
+    elif [[ "$fzf_array" == "$(<$file_reload)" ]]; then
+        print -r -- \"ignore\"
     else
-        print \\\"unbind(change)+change-prompt(Fzf> )+enable-search+transform-query:print -r \\\{q} > $file_rg; cat $file_fzf\\\"
-    fi
-    "
+        print -r -- "$fzf_array" > $file_reload
+        
+        local item flags types flag_path=1
+        for item in ${(u)=suffix_string}; do
+            if [[ $item == */ ]]; then
+                ((flag_path)) && { flag_path=0; search_paths=() }
+                [[ $item == /* || $root_dir == $PWD ]] && search_paths+=$item || search_paths+=$root_dir/$item
+            elif [[ $item =~ ^([hHiIsSoO[:digit:]]+)?,+((?:[[:word:]]+)(?:,+[[:word:]]+)*)?,*$ ]]; then
+                flags=$match[1] types=$match[2]
+                [[ $flags =~ H ]] && unset \"dynamic_opts[--hidden]\"
+                [[ $flags =~ h ]] && dynamic_opts[--hidden]=
+                [[ $flags =~ I ]] && unset \"dynamic_opts[--no-ignore]\"
+                [[ $flags =~ i ]] && dynamic_opts[--no-ignore]=
+                [[ $flags =~ S ]] && dynamic_opts[--$sort[1]]=$sort[2]
+                [[ $flags =~ s ]] && dynamic_opts[--$sort[1]]=$sort[3]
+                [[ $flags =~ O ]] && unset \"dynamic_opts[--max-count]\"
+                [[ $flags =~ o ]] && dynamic_opts[--max-count]=1
+                [[ $flags =~ [[:digit:]]+ ]] && { ((MATCH)) && dynamic_opts[--max-depth]=$MATCH || unset \"dynamic_opts[--max-depth]\" }
+                [[ -n $types ]] && type+=( ${(s/,/)types} )
+            else
+                iglob+=$item
+            fi
+        done
 
-    initial_search="
-    if [[ -n \{q} ]]; then
-        print -r -- \\\"reload($cmd ${(@qqu)o_dynamic} ${(@qqu)o_types} ${(@qqu)o_iglobs} -- \\\{q} ${(@qq)Search_paths} )\\\"
-    else
-        if (($+o_custom[warm])); then
-            local random_str=\$(cat /dev/urandom | tr -cd '[:lower:]' | head -c 4)
-            print -r -- \\\"execute-silent:$cmd ${(@qqu)o_dynamic} ${(@qqu)o_types} ${(@qqu)o_iglobs} -- \$random_str ${(@qq)Search_paths} &; print \\\\\$! > $file_childid\\\"
-        else
-            print -r -- \\\"ignore\\\"
-        fi
+        # once
+        [[ -s $file_childid ]] && {
+            kill $(<$file_childid) &> /dev/null
+            truncate --size 0 $file_childid
+        }
+        
+        print -r -- \"reload($cmd ${(kv)dynamic_opts} ${type:+--type=${(@)^type}} ${iglob:+--iglob=${(@qq)^iglob}} -- ${(qq)prefix_string} ${(@qq)search_paths})\"
     fi
-    "
-
+    '
+    
     fopts="
     $FZF_DEFAULT_OPTS
     --layout=reverse-list --disabled +m
     --query '$Pattern'
-    --prompt \"Rg> \"
-    --exact
+    --prompt 'Rg> '
     --bind \"start:transform:$initial_search\"
-    --bind \"change:transform:$change_reload\"
+    --bind \"ctrl-g:transform:$toggle_search\"
     --bind \"result:transform:$change_preview\"
     --bind \"resize:transform:$change_preview\"
-    --bind \"ctrl-g:transform:$toggle_search\"
+    --bind \"change:transform:$change_reload\"
     --delimiter :
-    --header-first --header=\"keybindings:: A-e, A-enter | pattern:: HhIiOoSse<->,cc,cpp dir/ iglob\"
+    --header-first --header=\"keybindings:: A-e, A-enter | pattern:: HhIiOoSs<->,cc,cpp dir/ iglob\"
     --preview-window \"up:~1,+{2}/2:border-down\"
     --preview 'bat --style=numbers,header,changes,snip --color=always --highlight-line {2} -- {1}'
     --expect \"alt-enter\"
@@ -316,12 +291,13 @@ main() {
     --bind=\"alt-enter:accept,enter:accept\"
     $FZF_CUSTOM_OPTS
     "
-    
-    Results=$(: | FZF_DEFAULT_OPTS="$fopts" startup_fzf ${+o_custom[popup]+--popup})
 
-    if ((exitcode == 1)); then print_msg warn  "not search any files";
-    elif ((exitcode == 2)); then print_msg warn "not match any files";
-    elif ((exitcode == 130)); then :;
+    Results=$(: | FZF_DEFAULT_OPTS="$fopts" startup_fzf ${+extend_opts[--popup]+--popup})
+    exitcode=$?
+
+    if ((exitcode == 1)); then print_msg warn  "(cmd:$cmd | pattern:$Pattern)not search any files";
+    elif ((exitcode == 2)); then print_msg warn "(cmd:$cmd | pattern:$Pattern) not match files";
+    elif ((exitcode == 130)); then ;
     else __handle_result;fi
     
     return $exitcode
