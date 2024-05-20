@@ -166,7 +166,6 @@ main() {
     $FZF_DEFAULT_OPTS
     --prompt 'Files> '
     --exit-0
-    --scheme path --exact --tiebreak \"length,end,chunk,index\"
     --delimiter / --nth -1,-2
     --header-first --header=\"Keybindings:: enter, A-e, A-enter\"
     --expect \"alt-enter\"
