@@ -16,7 +16,7 @@ function startup_fzf() {
     fi
 }
 
-help() {
+function help() {
     local help_msg='\nusage: ff [OPTIONS] [DIRECTORIES or Files]
 
     OPTIONS:
@@ -46,7 +46,7 @@ help() {
     exit 0
 }
 
-parse_cmdline() {
+function parse_cmdline() {
     local item 
 
     for item in "$@"; do 
@@ -107,7 +107,7 @@ parse_cmdline() {
     done
 }
 
-handler() {
+function handler() {
     local trigger_key files
     trigger_key=${"${(@f)Results}"[1]}
     files=(${"${(@f)Results}"[2,-1]})
@@ -119,7 +119,7 @@ handler() {
     fi
 }
 
-main() {
+function main() {
     local static_opts=()
     local -A zopts extend_opts dynamic_opts
 

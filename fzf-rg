@@ -15,7 +15,7 @@ function startup_fzf() {
     fi
 }
 
-help() {
+function help() {
     local help_msg='\nusage: ss [OPTIONS] [pattern] [DIRECTORIES or Files]
 
     OPTIONS:
@@ -46,7 +46,7 @@ help() {
     exit 0
 }
 
-parse_cmdline() {
+function parse_cmdline() {
     local item
     for item in "$@"; do 
         { [[ $item == /* && -e $item ]] || [[ -e $Root_dir/$item ]] } && {
@@ -100,7 +100,7 @@ parse_cmdline() {
     done
 }
 
-__handle_result() {
+function handler() {
     local trigger_key file_path line_number
     trigger_key=${"${(@f)Results}"[1]}
     file_path=${Results[(f)-1][(ws/:/)1]}
@@ -113,7 +113,7 @@ __handle_result() {
     fi
 }
 
-main() {
+function main() {
     local static_opts=() iglob=() type=() sort=(sortr none modified)
     local -A zopts extend_opts dynamic_opts
 
@@ -300,7 +300,7 @@ main() {
     if ((exitcode == 1)); then print_msg warn  "(cmd:$cmd | pattern:$Pattern)not search any files";
     elif ((exitcode == 2)); then print_msg warn "(cmd:$cmd | pattern:$Pattern) not match files";
     elif ((exitcode == 130)); then ;
-    else __handle_result;fi
+    else handler;fi
     
     return $exitcode
 }
