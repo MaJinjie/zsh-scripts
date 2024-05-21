@@ -171,7 +171,7 @@ function main() {
     trap "command rm -f $file_rg $file_fzf $file_reload $file_childid" EXIT SIGINT SIGTERM
 
     # cmd 
-    cmd="command rg --line-number --with-filename --no-heading --color=always --smart-case ${(@qq)static_opts}"
+    cmd="command rg --line-number --with-filename --no-heading --color=always --smart-case --follow ${(@qq)static_opts}"
 
     initial_search="
     local warm file_childid cmd search_paths

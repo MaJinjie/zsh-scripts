@@ -60,7 +60,7 @@ function handler() {
 }
 
 local zopts
-local fopts results exitcode
+local fopts Results exitcode
 local file_flush
 
 zparseopts -D -E -F -A zopts -- -flush s h -popup -help || {
@@ -90,7 +90,7 @@ $FZF_DEFAULT_OPTS
 $FZF_CUSTOM_OPTS
 "
 
-results=$(cat $file_flush | lscolors | FZF_DEFAULT_OPTS="$fopts" startup_fzf ${+zopts[--popup]+--popup} )
+Results=$(cat $file_flush | lscolors | FZF_DEFAULT_OPTS="$fopts" startup_fzf ${+zopts[--popup]+--popup} )
 exitcode=$?
 
 if ((exitcode == 1)); then print_msg warn  "not search any files";
