@@ -1,0 +1,19 @@
+#!/usr/bin/env zsh
+
+function print_msg () {
+    local tag context tcolor ccolor
+
+    tag=$1 context=${@:2}
+    case $tag in 
+        info)   tcolor=blue ccolor=magenta ;;
+        warn)   tcolor=yellow ccolor=magenta ;;
+        error)  tcolor=red ccolor=magenta ;;
+        help)   tcolor=green ccolor=magenta ;;
+        *)      print -- "$@"; exit 0 ;;
+    esac
+    context="%B%S%F{$tcolor}$tag%b%s%f : %F{$ccolor}$context%f"
+
+    print -- "${(%):-$context}"    
+}
+
+print_msg "$@"

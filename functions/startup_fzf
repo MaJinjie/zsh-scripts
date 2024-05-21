@@ -1,0 +1,11 @@
+#!/usr/bin/env zsh
+
+function startup_fzf() {
+    if [[ $1 == --popup ]] && (($+commands[fzf-tmux])); then
+        fzf-tmux $FZF_TMUX_OPTS "${@:2}" <&0
+    else
+        fzf "$@"
+    fi
+}
+
+startup_fzf "$@"
