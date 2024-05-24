@@ -34,14 +34,14 @@ function help() {
 function flush_oldfiles() {
     local valid_files=()
     
-    nvim --headless -c "call append(0, v:oldfiles)" \
+    nvim --noplugin --headless \
+        -c "call append(0, v:oldfiles)" \
         -c "write! $file_flush" \
-        -c exit 1> /dev/null 2>&1
+        -c 'exit' 1> /dev/null 2>&1
 
     while read -r file; do
-        if [[ -e $file ]]; then
-            valid_files+=$file
-        fi
+        [[ -e $file ]] || [[ $file != /tmp/* ]] || continue
+        valid_files+=$file
     done <$file_flush
 
     print -r -- ${(F)valid_files} > $file_flush
