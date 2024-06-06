@@ -7,7 +7,7 @@
 
 1. fzf-fd 能够同时传入文件和目录，并使用lscolors颜色输出到fzf面板。
 2. fzf-rg 能够根据匹配的条目数动态地调整fzf预览窗口的大小, 意味着你不需要关心何时打开预览窗口。
-3. fzf-rg 支持fzf和rg两种模式的切换，并且可以在fzf搜索过程中动态地修改`max-depth hidden no-ignore iglob type type-not`等所有可以影响到匹配文件的参数。
+3. fzf-rg 支持fzf和rg两种模式的切换，并且可以在fzf搜索过程中动态地修改`max-depth hidden no-ignore iglob type `等所有可以影响到匹配文件的参数。
 4. fzf-rg 初始时，如果未传入查询字符串，fzf面板为空，但会在后台执行一次该命令，直到正式开启搜索，即进行热缓存,加快搜索速度。
 5. fzf-rg 为了减少刷新（reload）的次数，只有当`--`后字符串以空格结尾时，才会执行重新搜索。
 6. fzf-rg fzf-fd 支持大多数常用的选项参数。
@@ -219,10 +219,9 @@ $FZF_COLORS \
 "
 
 export FZF_TMUX_OPTS="-p70%,80%"
-export FZF_GREP_TMUX_OPTS="-p100%,80%"
 ```
 
 ## others
 
 1. 接下来只对zsh版本做维护
-2. 如果没有`lscolors`, 请使用对应的包管理工具下载或访问https://github.com/sharkdp/lscolors下载。
+2. 如果没有`lscolors`, 请使用对应的包管理工具下载或访问https://github.com/sharkdp/lscolors。(如果最新版本有问题，就使用`v0.15.0` )
