@@ -17,7 +17,7 @@ function startup_fzf() {
 }
 
 function help() {
-    local help_msg='\nusage: ff [OPTIONS] [DIRECTORIES or Files]
+    local help_msg='\nusage: ff [OPTIONS] [DIRECTORIES or Files] [-- fd options]
 
     OPTIONS:
         -g glob-based search
@@ -29,7 +29,7 @@ function help() {
         -e extensions, Comma-separated
         --args pass -> fd
 
-        -q | --query force initial query string
+        -q force initial query string
         --popup start fzf-tmux
         --root-dir relative path -> abs dir
         --split Explain the parameters passed in by the user as much as possible, HhIig,exts
@@ -129,7 +129,7 @@ function main() {
     zparseopts -D -E -F -A zopts -- \
         g p t: d: H I e: \
         -args: -help \
-        -root-dir: r q: \
+        -root-dir: r: q: \
         -popup -split -alias -output || exit 1
     
     (($+zopts[--help]))     && help

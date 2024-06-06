@@ -1,20 +1,34 @@
-1. find-files.zsh 查找文件
-2. search-string.zsh 搜索文本
+1. fzf-fd 查找文件
+2. fzf-rg 搜索文本
+3. fzf-of 搜索最近nvim打开的文件
+4. fzf-man 查看man页面
 
 # feature
 
-1. find-files.zsh 能够同时传入文件和目录，并使用lscolors颜色输出到fzf面板。
-2. search-string.zsh 能够根据匹配的条目数动态地调整fzf预览窗口的大小, 意味着你不需要关心何时打开预览窗口。（暂时没有添加切换键，因为这效果很好）
-3. search-string.zsh 支持fzf和rg两种模式的切换，并且可以在fzf搜索过程中动态地修改`max-depth hidden no-ignore iglob type type-not`等所有可以影响到匹配文件的参数，非常便捷。
-4. search-string.zsh 初始时，如果未传入查询字符串，fzf面板为空，但会在后台执行一次该命令，即形式热缓存。
-5. find-files.zsh search-string.zsh 支持大多数常用的选项参数。
-6. find-files.zsh search-string.zsh 定义了一种规则来替代命令行中常用选项参数的传入，这使得它使用起来更加方便(精髓)。
-7. find-files.zsh search-string.zsh 都能够正确解析带有特殊字符的文件。
+1. fzf-fd 能够同时传入文件和目录，并使用lscolors颜色输出到fzf面板。
+2. fzf-rg 能够根据匹配的条目数动态地调整fzf预览窗口的大小, 意味着你不需要关心何时打开预览窗口。
+3. fzf-rg 支持fzf和rg两种模式的切换，并且可以在fzf搜索过程中动态地修改`max-depth hidden no-ignore iglob type type-not`等所有可以影响到匹配文件的参数。
+4. fzf-rg 初始时，如果未传入查询字符串，fzf面板为空，但会在后台执行一次该命令，直到正式开启搜索，即进行热缓存,加快搜索速度。
+5. fzf-rg 为了减少刷新（reload）的次数，只有当`--`后字符串以空格结尾时，才会执行重新搜索。
+6. fzf-rg fzf-fd 支持大多数常用的选项参数。
+7. fzf-rg fzf-fd 定义了一种规则来替代命令行中常用选项参数的传入，这使得它使用起来更加方便。
+8. fzf-rg fzf-fd 能够正确解析带有特殊字符的文件。
 
 # install
 
-1. `git clone https://github.com/MaJinjie/fzf-fd-rg.git`
-2. 把`fzf-fd fzf-rg tools-report` 加入到环境变量中
+## 1 添加到path
+
+1. `git clone https://github.com/MaJinjie/zsh-scripts.git`
+2. 把目录加入到环境变量中
+
+## 2 zint插件管理
+
+```bash
+# 需要使用NICHOLAS85/z-a-linkbin ice
+zinit ice lbin'fzf-*'
+zinit light MaJinjie/zsh-scripts
+
+```
 
 # usage
 
@@ -23,8 +37,10 @@
 > 我的别名
 
 ```bash
-ff "fzf-fd -H -d6 --split"
-ss "fzf-rg -d6 --sort none:accessed --window full --split --args \"-j 2\""
+ ff "fzf-fd --alias --split --popup -H -d6"
+ ss "FZF_TMUX_OPTS='-p100%,100%' fzf-rg --alias --split --popup --args \"--threads=2\" --warm -d6"
+ fo "fzf-of --popup"
+ fm "fzf-man --popup"
 ```
 
 # introduce
@@ -34,34 +50,29 @@ ss "fzf-rg -d6 --sort none:accessed --window full --split --args \"-j 2\""
 ### 1 help
 
 ```bash
-# 1. 能够解析常用的参数
-# 2. 接受目录或文件
-# 3. 尽可能地解释用户传入的参数(很完美，几乎完全避免了和文件名或模式冲突)
-usage: ff [OPTIONS] [DIRECTORIES or Files]
+usage: ff [OPTIONS] [DIRECTORIES or Files] [-- fd options]
 
 OPTIONS:
+    fd:
     -g glob-based search
     -p full-path
     -t char set, file types dfxlspebc (-t t...)
-    -T string, changed after time ( 1min 1h 1d(default) 2weeks "2018-10-27 10:00:00" 2018-10-27)
     -d int, max-depth
     -H bool, --hidden
     -I bool, --no-ignore
-    -e extensions
-    -E exclude glob pattern
-    -o select + -O
-    -q Cancel the first n matching file names (Optional default 1)
-
-    --sort -> rg --sortr (format default_val:other_val | val(default and other))
-    --Sort -> rg --sort (same as up)
-    --help
-    --window full none
-    --split Explain the parameters passed in by the user as much as possible
+    -e extensions, Comma-separated
     --args pass -> fd
 
+    others:
+    -q | --query force initial query string
+    --popup start fzf-tmux
+    --root-dir relative path -> abs dir
+    --split Explain the parameters passed in by the user as much as possible, HhIig,exts
+    --alias use directory alias
+
+    --help
+
 KEYBINDINGS:
-    ctrl-s horizontal direction splitw
-    ctrl-v vertical direction splitw
     alt-e subshell editor
     alt-enter open dirname file
     enter current open file
@@ -69,93 +80,15 @@ KEYBINDINGS:
 
 ### 2 split
 
-形式如：`ff <class>/<context>/[<class>/<context>]...[flags]`
+形式如：`ff [duration | [dfxlspebchHiIg\d],[extension[,extension]]]`
 
 **介绍**：
 
-`class` 标志类，目前有ftex(E)。
-
-f 单参数标志。内容可以为`higa<number>dfxlebcsp`，不解析flags,传入也没错
-t 一个时间段。形式可以为`1d`、`,1d`、`1d,1h`，接受`r`标志，反转的意思，参数前后交换
-e 拓展名集合。可以指定多个，接受`r`标志，一个是正向限定，一个是反向排除（通过`--exclude=*.exe`）来实现
-E|x 和`--exclude=...`相同，可以指定多个
-
-**注意**：
-
-1. `/`可以替换为`[[:punct:]]`中的任何符号,例如`#,.:` 。
-2. 多个class和context组合可以连续传递，而不需要使用空格分开。
-3. 如果`context`中包含多个内容，请以`,`分割。在此情况下， 分隔符不可以为`,`，否则，它只会解析你的第一项。例如:`e,sh,zsh (error)`,正确的应该是 `e/sh,zsh/`
-4. `h` 是切换`--hidden`参数，也就是说你之前传入`--hidden`，它就取消，否则就加上。`i` 同理
-5. `0` 0深度不可能吧，所以它被解释为取消之前传入的`--max-depth`
-
-```bash
-# 下面是经过多次修改精简后的过程, 它包含了：
-# 1. --changed-after --changed-before
-# 2. --max-depth --type --glob --full-path
-# 3. --hidden --no-ignore
-# 4. --extension --exclude
-__split() {
-    ((DEBUG)) && set -x
-    local item idx
-    local match class context flags
-    for item in "$@"; do
-        { [[ -e $item ]] && ((o_q-- < 1)) } && {
-            [[ -d $item ]] && Directories+=$item || Files+=$item
-            continue
-        }
-        ((o_split)) && [[ $item =~ '^([[:alpha:]]([[:punct:]]).*\2)+[[:alpha:]]*$'  ]] && {
-            flags=( ${(s//)item##*[[:punct:]]} )
-            while [[ $item =~ '^[[:alpha:]]([[:punct:]]).*?\1' ]]; do
-                class=$MATCH[1] context=$MATCH[3,-2] match=$MATCH
-                case $class in
-                    f)
-                        while (($#context)); do
-                            if [[ $context =~ ^h ]]; then
-                                ((idx=$o_args[(I)--hidden])) && unset "o_args[idx]" || o_args+=--hidden
-                            elif [[ $context =~ ^i ]]; then
-                                ((idx=$o_args[(I)--no-ignore])) && unset "o_args[idx]" || o_args+=--no-ignore
-                            elif [[ $context =~ ^g ]]; then
-                                ((idx=$o_args[(I)--glob])) && unset "o_args[idx]" || o_args+=--glob
-                            elif [[ $context =~ ^a ]]; then
-                                ((idx=$o_args[(I)--full-path])) && unset "o_args[idx]" || o_args+=--full-path
-                            elif [[ $context =~ ^[dfxlebcsp] ]]; then
-                                o_types+=$MATCH
-                            elif [[ $context =~ ^[[:digit:]]+ ]]; then
-                                unset "o_args[${o_args[(i)--max-depth*]}]"
-                                ((MATCH)) && o_args+="--max-depth=$MATCH"
-                            else
-                                report_error "class:$class" "$context" "内容错误"
-                            fi
-                            context=${context#$MATCH}
-                        done
-                        ;;
-                    t)
-                        local after before
-                        ((flags[(I)r])) && {after=before; before=after;} || {after=after; before=before;}
-                        [[ $context =~ ^[^,]* && -n $MATCH ]] && o_args+="--changed-$after=$MATCH"
-                        context=${context#$MATCH}
-                        [[ $context =~ [^,]*$ && -n $MATCH ]] && o_args+="--changed-$before=$MATCH"
-                        ;;
-                    e)
-                        ((flags[(I)r])) && o_excludes+=( $(print -- \*.${^${(s/,/)context}}) ) || o_extensions+=( ${(s/,/)context} )
-                        ;;
-                    x)
-                        o_excludes+=( $(print -- ${^${(s/,/)context}}) )                        ;;
-                    *)
-                        report_error "class:$class" "类别错误"
-                        ;;
-                esac
-                item=${item#$match}
-            done
-            continue
-        }
-        [[ -z $Pattern ]] || report_error "$item error, pattern is exists"
-        Pattern=$item
-    done
-    ((DEBUG)) && set +x
-}
-
-```
+1. `duration` 一个时间段，例如`1d,1h => 1d-1h` `1d,, => 1d-`
+2. `dfxlspebc` 分别对应要搜索的文件类型
+3. `hHiI<digit>` 分别代表切换隐藏文件、忽略文件以及指定搜索深度
+4. `g` 指定当前git仓库的`--git-dir`为`root-dir`
+5. `extension` 传递给`fd --extension`
 
 ## search-string
 
@@ -164,35 +97,28 @@ __split() {
 ### 1 help
 
 ```bash
-# 1. 能够解析常用的参数
-# 2. 接受目录或文件
-# 3. 能够在fzf过滤时，解释--iglob --hidden --no-ignore --max-depth --type --type-not
-# 4. 尽可能解释用户传入的参数
-# 5. 解决了\b的转义问题
-usage: ss [OPTIONS] [pattern] [DIRECTORIES or Files]
+usage: ss [OPTIONS] [pattern] [DIRECTORIES or Files] [-- rg options]
     OPTIONS:
+        rg:
         -t file types,  Comma-separated
-        -T file types(not),  Comma-separated
-        -d int max-depth
+        -g iglob pattern,  Comma-separated
         -H bool --hidden
-        -I bool --no-ignore
-        -q Cancel the first n matching file names (Optional, default 1)
-        -w world regex
-        -u[uu] (Optional default -u)
+        -I bool --no-ignorehas
+        -d int max-depth
         -m --max-count
-        -1 --max-count=1
-        -L --follow
-
-        --sort -> rg --sortr (format default_val:other_val | val(default and other))
-        --Sort -> rg --sort (same as up)
-        --help
-        --window full none
-        --split Explain the parameters passed in by the user as much as possible
+        --sort format (sort|sortr):default:toggle_val
         --args pass -> rg
 
+        others
+        -q force initial query string
+        --warm warm-cache when initial querystring is empty
+        --popup start fzf-tmux
+        --split Explain the parameters passed in by the user as much as possible
+        --alias use directory alias
+
+        --root-dir | -r filter base dir
+        --help
     KEYBINDINGS:
-        ctrl-s horizontal direction splitw
-        ctrl-v vertical direction splitw
         alt-e subshell editor
         alt-enter open dirname file
         enter current open file
@@ -200,111 +126,21 @@ usage: ss [OPTIONS] [pattern] [DIRECTORIES or Files]
 
 ### 2 split
 
-形式如：`ss <class>/<context>/[<class>/<context>]...[flags]`
+形式如：`rg [hHiIsSoOg\d],[type[,type]]]`
 
 **介绍**：
 
-`class` 标志类，目前有ftex(E)。
-
-f 单参数标志。内容可以为`hi<number>os`，其中，s是排序，o是文件匹配唯一。其中，s接受flags中的r，即反序
-t --type。接受`r`标志，--type-not
-e 拓展名集合。可以指定多个，接受`r`标志，一个是正向限定，一个是反向排除（通过`--exclude=*.exe`）来实现
-g --iglob相同，可以指定多个，接受r标志
-
-```bash
-# 下面是经过多次修改精简后的过程, 它包含了：
-# 1. --max-depth --sort --max-count=1
-# 2. --hidden --no-ignore
-# 3. --type --type-not
-# 4. --iglob
-
-__split() {
-    local item idx opt
-    local match class context flags
-    for item in "$@"; do
-        { [[ -e $item ]] && ((o_q-- < 1)) } && {
-            [[ -d $item ]] && Directories+=$item || Files+=$item
-            continue
-        }
-        ((o_split)) && [[ $item =~ '^([[:alpha:]]([[:punct:]]).*\2)+[[:alpha:]]*$'  ]] && {
-            flags=( ${(s//)item##*[[:punct:]]} )
-            while [[ $item =~ '^[[:alpha:]]([[:punct:]]).*?\1' ]]; do
-                class=$MATCH[1] context=$MATCH[3,-2] match=$MATCH
-                case $class in
-                    f)
-                        while (($#context)); do
-                            if [[ $context =~ ^h ]]; then
-                                ((idx=$o_dynamic[(I)--hidden])) && unset "o_dynamic[idx]" || o_dynamic+=--hidden
-                            elif [[ $context =~ ^i ]]; then
-                                ((idx=$o_dynamic[(I)--no-ignore])) && unset "o_dynamic[idx]" || o_dynamic+=--no-ignore
-                            elif [[ $context =~ ^o ]]; then
-                                 o_dynamic[$o_dynamic[(i)--max-count*]]=--max-count=1
-                            elif [[ $context =~ ^s ]]; then
-                                ((flags[(I)r])) && opt=--sort= || opt=--sortr=
-                                ((idx=$o_dynamic[(I)$opt*])) && if [[ $o_dynamic[idx] == *$o_default_map[${opt%=}] ]]; then
-                                    o_dynamic[idx]=$opt$o_normal_map[${opt%=}]
-                                else
-                                    o_dynamic[idx]=$opt$o_default_map[${opt%=}]
-                                fi
-                            elif [[ $context =~ ^[[:digit:]]+ ]]; then
-                                unset "o_dynamic[${o_dynamic[(i)--max-depth*]}]"
-                                ((MATCH)) && o_dynamic+="--max-depth=$MATCH"
-                            else
-                                report_error "class:$class" "$context" "内容错误"
-                            fi
-                            context=${context#$MATCH}
-                        done
-                        ;;
-                    t)
-                        ((flags[(I)r])) && opt=--type-not= || opt=--type=
-                        o_types+=( $(print -- $opt${^${(s/,/)context}}) )
-                        ;;
-                    e)
-                        ((flags[(I)r])) && opt="--iglob=!" || opt="--iglob="
-                        o_iglobs+=( $(print -- \'$opt\*.${^${(@s/,/)context}}\') )
-                        ;;
-                    g)
-                        ((flags[(I)r])) && opt="--iglob=!" || opt="--iglob="
-                        o_iglobs+=( $(print -- \'$opt${^${(@s/,/)context}}\') )
-                        ;;
-                    *)
-                        report_error "class:$class" "类别错误"
-                        ;;
-                esac
-                item=${item#$match}
-
-            done
-            continue
-        }
-        [[ -z $Pattern ]] || report_error "$item error, pattern is exists"
-        Pattern=$item
-    done
-}
-```
+1. `Ss` 是否排序搜索条目
+2. `Oo` 是否搜索条目文件唯一
+3. `hHiI<digit>` 分别代表切换隐藏文件、忽略文件以及指定搜索深度
+4. `g` 指定当前git仓库的`--git-dir`为`root-dir`
+5. `type` 传递给rg的`--type`
 
 ### 3 Oneline filtering
 
 ```bash
-change_reload="
-setopt extended_glob
-local dynamic=($o_dynamic) types=($o_types) globs=()
-[[ \$FZF_QUERY == *--* ]] && for item in \${(s/ /)\${FZF_QUERY##*--}}; do
-    while ((\$#item)); do
-        case \$item in
-            o) dynamic[\$dynamic[(i)--max-count*]]=--max-count=1; item=${item#,##} ;;
-            h) ((idx=\$dynamic[(I)--hidden])) && unset \\\"dynamic[idx]\\\" || dynamic+=--hidden; item= ;;
-            i) ((idx=\$dynamic[(I)--no-ignore])) && unset \\\"dynamic[idx]\\\" || dynamic+=--no-ignore; item= ;;
-            s) ((idx=\$dynamic[(I)--sortr[[:space:]=]*])) && { [[ \$dynamic[idx] == *$o_default_map[--sortr] ]] && dynamic[idx]=--sortr=$o_normal_map[--sortr] || dynamic[idx]=--sortr=$o_default_map[--sortr] }; item= ;;
-            S) ((idx=\$dynamic[(I)--sort[[:space:]=]*])) && { [[ \$dynamic[idx] == *$o_default_map[--sort] ]] && dynamic[idx]=--sort=$o_normal_map[--sort] || dynamic[idx]=--sort=$o_default_map[--sort] }; item= ;;
-            <->) unset \\\"dynamic[\$dynamic[(i)--max-depth*]]\\\"; ((\$item)) && dynamic+=--max-depth=\$item; item= ;;
-            [[:lower:]]##,,*) types+=--type-not=\${item[(ws/,,/)1]}; item=\${item#*,,} ;;
-            [[:lower:]]##,*) types+=--type=\${item[(ws/,/)1]}; item=\${item#*,} ;;
-            *) iglobs+=\\\"'--iglob=\$item'\\\"; item= ;;
-        esac
-    done
-done
-print -r \\\"reload($cmd \${(u)dynamic} \${(u)types} \${(u)globs} -- '\${\${FZF_QUERY%--*}%% #}' ${Directories} ${Files} || true)\\\"
-"
+# 使用该正则实现搜索字符串和其他项的分离
+[[ {q} =~ ^(?:[[:blank:]]*(.*?)[[:blank:]]*)(?:-|--[[:blank:]]*(.*?)[^[:blank:]]*)?$ ]]
 ```
 
 ### 4 preview
@@ -318,48 +154,10 @@ print -r \\\"reload($cmd \${(u)dynamic} \${(u)types} \${(u)globs} -- '\${\${FZF_
 
 **通过修改`b[1-3] per[1-3]`,可以重新调整比例。**
 
-```bash
-# 如果更改了fzf布局，需要改变line中的数字3
-change_preview="
-typeset lines=\$((FZF_LINES - 3))  match_count=\$FZF_MATCH_COUNT preview_lines=\${FZF_PREVIEW_LINES:-\${\$(<$file_preview_size):-0}}
-typeset b1=10000 b2=1000 b3=100 per1=0 per2=30 per3=60 result
-if ((match_count == 0 || match_count > b1)); then
-    result=0
-elif ((match_count > b2)); then
-    result=\$(( ((b1 - match_count) * (per2 - per1) / (b1 - b2)  + per1) * lines / 100 ))
-elif ((match_count > b3)); then
-    result=\$(( ((b2 - match_count) * (per3 - per2) / (b2 - b3)  + per2) * lines / 100 ))
-elif ((match_count > (100 - per3) * lines / 100)); then
-    result=\$(( per3 * lines / 100 ))
-else
-    result=$\((lines - match_count))
-fi
-[[ -z \$FZF_PREVIEW_LINES ]] && print \$result > $file_preview_size
-print \\\"change-preview-window(\$result)\\\"
-"
-```
-
-由于在我目前版本，FZF_PREVIEW_LINES始终为空，所以我使用文件记录预览窗口的行数
-
 ### 5 inital-search
 
 如果字符串为空，那么就在后台执行一遍命令。
-目的：形成热缓存，加快未来的查找速度。
-
-```bash
-initial_search="
-if [[ -z '\{q}' ]]; then
-    if (($o_default_map[--no-warm])); then
-        print \\\"ignore\\\"
-    else
-        print \\\"execute-silent:$cmd $o_dynamic $o_types -- \\\{q} ${Directories} ${Files} &> /dev/null &\\\"
-    fi
-else
-    print \\\"reload:$cmd $o_dynamic $o_types -- \\\{q} ${Directories} ${Files}\\\"
-fi
-"
-
-```
+目的：形成热缓存，加快之后的查找速度。
 
 # supplement
 
@@ -428,12 +226,3 @@ export FZF_GREP_TMUX_OPTS="-p100%,80%"
 
 1. 接下来只对zsh版本做维护
 2. 如果没有`lscolors`, 请使用对应的包管理工具下载或访问https://github.com/sharkdp/lscolors下载。
-3. 如果不想要`report`颜色输出，就直接修改源脚本改为`print`, 注意脚本中的report路径
-
-# 总结
-
-编写zsh脚本的过程，也是学习zsh与bash不同的过程。
-相较于bash，zsh对变量的解析更加精细，对变量可用的操作也更多。
-最典型的也是最常用的字符串和数组之间的变换，zsh只需要简单使用变量标志即可，而bash却可能写一个循环。
-zsh中，通配符拓展以及`zsh/pcre`引擎都很好。
-只有用过的人，才能深有体会。

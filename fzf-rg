@@ -16,7 +16,7 @@ function startup_fzf() {
 }
 
 function help() {
-    local help_msg='\nusage: ss [OPTIONS] [pattern] [DIRECTORIES or Files]
+    local help_msg='\nusage: ss [OPTIONS] [pattern] [DIRECTORIES or Files] -- [rg options]
 
     OPTIONS:
         -t file types,  Comma-separated
@@ -127,7 +127,7 @@ function main() {
         H I d: m: -sort: \
         -help -args: \
         -split -alias -popup -warm \
-        q -root-dir: r \
+        q: -root-dir: r: \
         || exit 1
 
     (($+zopts[--help]))                 && help
