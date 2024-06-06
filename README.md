@@ -141,6 +141,9 @@ usage: ss [OPTIONS] [pattern] [DIRECTORIES or Files] [-- rg options]
 ```bash
 # 使用该正则实现搜索字符串和其他项的分离
 [[ {q} =~ ^(?:[[:blank:]]*(.*?)[[:blank:]]*)(?:-|--[[:blank:]]*(.*?)[^[:blank:]]*)?$ ]]
+
+# example1 搜索--root-dir目录的linting/目录下，cpp sh类型文件，与*sh | *h 匹配的文件
+bash -- ,cpp,sh *.sh *h linting/
 ```
 
 ### 4 preview
